@@ -1,0 +1,43 @@
+#!/bin/sh
+# Copy stdin to the *local* system clipboard from any environment.
+#
+# Resolution order:
+#   1. pbcopy         - the laptop itself
+#   2. lemonade relay - remote hosts and containers; same routing as the nvim
+#                       clipboard provider
+#   3. OSC 52         - written straight to the attached terminal; needs a
+#                       transport that passes it through (ssh yes, mosh < 1.4 no)
+
+# tmux runs copy-pipe jobs with the server's environment, whose PATH is often
+# the bare system default — prepend the locations this setup installs into.
+PATH="$HOME/.config/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+
+input=$(cat)
+[ -n "$input" ] || exit 0
+
+if command -v pbcopy > /dev/null 2>&1; then
+  printf '%s' "$input" | pbcopy
+  exit $?
+fi
+
+if command -v lemonade > /dev/null 2>&1; then
+  host="${HOST_IP:-}"
+  if [ -z "$host" ] && [ -f "$HOME/.config/host_ip" ]; then
+    host=$(cat "$HOME/.config/host_ip")
+  fi
+  [ -n "$host" ] || host=localhost
+  port="${LEMONADE_RELAY_PORT:-64011}"
+  if printf '%s' "$input" | timeout 3 lemonade --host="$host" --port="$port" copy 2> /dev/null; then
+    exit 0
+  fi
+fi
+
+# OSC 52 fallback. Inside tmux, write to the attached client's terminal directly
+# so no Ms terminfo capability is required.
+b64=$(printf '%s' "$input" | base64 | tr -d '\n')
+if [ -n "$TMUX" ]; then
+  tty=$(tmux display-message -p '#{client_tty}' 2> /dev/null)
+else
+  tty=/dev/tty
+fi
+[ -n "$tty" ] && printf '\033]52;c;%s\007' "$b64" > "$tty" 2> /dev/null

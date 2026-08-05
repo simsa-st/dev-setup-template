@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Maintain the reverse SSH tunnel that carries clipboard traffic from a remote
+# host back to the laptop's lemonade server, and make sure the remote relay is
+# running behind it.
+#
+#   lemonade-tunnel <host> [remote_port]
+#
+# autossh (not plain ssh) because laptops sleep and change networks; -M 0 leaves
+# liveness detection to ServerAlive*, which is more reliable than autossh's own
+# echo port.
+set -euo pipefail
+
+host="${1:?usage: lemonade-tunnel <host> [remote_port]}"
+local_port="${LEMONADE_LOCAL_PORT:-2489}"
+remote_port="${2:-${LEMONADE_TUNNEL_PORT:-64010}}"
+
+# autossh occasionally leaves a zombie behind; replace rather than stack.
+if pgrep -f "autossh.*lemonade-tunnel-${host}" > /dev/null 2>&1; then
+  pkill -f "autossh.*lemonade-tunnel-${host}" || true
+  sleep 0.2
+fi
+
+AUTOSSH_GATETIME=0 autossh -M 0 -f -N -T \
+  -o ServerAliveInterval=30 \
+  -o ServerAliveCountMax=3 \
+  -o ExitOnForwardFailure=yes \
+  -o IdentitiesOnly=yes \
+  -o "ControlPath=~/.ssh/lemonade-tunnel-${host}" \
+  -R "${remote_port}:127.0.0.1:${local_port}" \
+  "${host}"
+
+sleep 0.2
+if pgrep -f "autossh.*lemonade-tunnel-${host}" > /dev/null 2>&1; then
+  echo "lemonade tunnel up: ${host}:${remote_port} -> localhost:${local_port}" >&2
+else
+  echo "warning: lemonade tunnel to ${host} may not have started" >&2
+fi
+
+# The relay fans the tunnel's loopback port out to 0.0.0.0 so containers and
+# other processes on the remote host can reach it too.
+ssh "${host}" "\${HOME}/.config/bin/lemonade-relay --restart ${remote_port}" >&2 || true

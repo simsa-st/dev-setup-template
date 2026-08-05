@@ -1,0 +1,95 @@
+#!/usr/bin/env python3
+"""TCP relay: 0.0.0.0:<relay_port> -> 127.0.0.1:<tunnel_port>.
+
+Lives on the remote host. The reverse SSH tunnel only binds loopback, which is
+invisible to containers and to processes in other namespaces; this relay gives
+them one reachable address for the clipboard.
+
+    lemonade-relay [--restart] [tunnel_port]
+
+--restart kills any running relay and re-launches this one detached, which is
+what `lemonade-tunnel` invokes over SSH on every connect.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import socket
+import subprocess
+import sys
+import threading
+
+RELAY_PORT = int(os.environ.get("LEMONADE_RELAY_PORT", 64011))
+DEFAULT_TUNNEL_PORT = int(os.environ.get("LEMONADE_TUNNEL_PORT", 64010))
+
+
+def pump(source: socket.socket, destination: socket.socket) -> None:
+    try:
+        while data := source.recv(4096):
+            destination.sendall(data)
+    except OSError:
+        pass
+    finally:
+        # Half-close so the peer thread unblocks instead of hanging on recv.
+        try:
+            destination.shutdown(socket.SHUT_WR)
+        except OSError:
+            pass
+
+
+def handle(client: socket.socket, tunnel_port: int) -> None:
+    try:
+        upstream = socket.create_connection(("127.0.0.1", tunnel_port), timeout=5)
+    except OSError as error:
+        print(f"relay: cannot reach 127.0.0.1:{tunnel_port}: {error}", file=sys.stderr)
+        client.close()
+        return
+    with client, upstream:
+        threads = [
+            threading.Thread(target=pump, args=(client, upstream), daemon=True),
+            threading.Thread(target=pump, args=(upstream, client), daemon=True),
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+
+def serve(tunnel_port: int) -> None:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind(("0.0.0.0", RELAY_PORT))
+        server.listen(16)
+        print(f"relay listening on 0.0.0.0:{RELAY_PORT} -> 127.0.0.1:{tunnel_port}")
+        while True:
+            client, _ = server.accept()
+            threading.Thread(target=handle, args=(client, tunnel_port), daemon=True).start()
+
+
+def restart(tunnel_port: int) -> None:
+    # Match the serving form only — this process's own cmdline says --restart,
+    # so it must not match the pattern it is about to pkill.
+    subprocess.run(["pkill", "-f", "lemonade-relay --serve"], check=False)
+    devnull = subprocess.DEVNULL
+    subprocess.Popen(
+        [sys.executable, os.path.abspath(__file__), "--serve", str(tunnel_port)],
+        stdout=devnull,
+        stderr=devnull,
+        stdin=devnull,
+        start_new_session=True,
+    )
+    print(f"relay restarted (-> 127.0.0.1:{tunnel_port})")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--restart", action="store_true", help="kill any relay and relaunch detached")
+    parser.add_argument("--serve", action="store_true", help="run the relay in the foreground")
+    parser.add_argument("tunnel_port", nargs="?", type=int, default=DEFAULT_TUNNEL_PORT)
+    args = parser.parse_args()
+    restart(args.tunnel_port) if args.restart else serve(args.tunnel_port)
+
+
+if __name__ == "__main__":
+    main()

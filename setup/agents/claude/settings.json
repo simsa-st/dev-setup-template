@@ -1,0 +1,10 @@
+{
+  "model": "opus",
+  "theme": "auto",
+  "permissions": {
+    "allow": [],
+    "deny": [
+      "Read(./setup/config/secrets/**)"
+    ]
+  }
+}

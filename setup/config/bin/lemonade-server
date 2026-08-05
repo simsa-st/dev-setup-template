@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Start the local (laptop-side) lemonade server that owns the real clipboard.
+# Idempotent: the connection helpers call it on every connect.
+set -euo pipefail
+
+port="${LEMONADE_LOCAL_PORT:-2489}"
+binary="${HOME}/go/bin/lemonade"
+command -v lemonade > /dev/null 2>&1 && binary=$(command -v lemonade)
+
+if pgrep -x lemonade > /dev/null 2>&1; then
+  echo "lemonade server already running"
+  exit 0
+fi
+
+[ -x "${binary}" ] || { echo "lemonade not installed (run setup/install.sh)" >&2; exit 1; }
+nohup "${binary}" server --port "${port}" > /dev/null 2>&1 &
+sleep 0.5
+pgrep -x lemonade > /dev/null 2>&1 || { echo "failed to start lemonade server" >&2; exit 1; }
+echo "started lemonade server on port ${port}"

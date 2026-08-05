@@ -1,0 +1,12 @@
+# ~/.pi is this directory. Same whitelist approach as the Claude config: track
+# settings, skills and prompts; ignore credentials, sessions and installed
+# packages.
+*
+!.gitignore
+!agent
+agent/*
+!agent/settings.json
+!agent/models.json
+!agent/prompts
+!agent/skills
+!agent/skills/**

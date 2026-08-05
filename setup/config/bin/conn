@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Connect to a machine, with the clipboard tunnel and (optionally) tmux/mosh.
+#
+#   conn h                 # ssh + login zsh
+#   conn --tmux h [name]   # ssh, attach/create tmux session (default: main)
+#   conn --mosh h          # mosh (roaming-tolerant, survives sleep)
+#   conn --mosh --tmux h
+#   conn --fwd h           # use the -fwd host variant (port forwards enabled)
+#
+# Aliases and mosh port ranges come from config/ssh/hosts.toml via `hosts`.
+# Replaces the usual sprawl of ssh_zsh / ssh_zsh_tmux / mosh_zsh / ... scripts.
+
+set -euo pipefail
+
+USE_TMUX="no" USE_MOSH="no" USE_FWD="no" SESSION=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -t | --tmux) USE_TMUX="yes"; shift ;;
+    -m | --mosh) USE_MOSH="yes"; shift ;;
+    -f | --fwd) USE_FWD="yes"; shift ;;
+    -h | --help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --) shift; break ;;
+    -*) echo "Unknown option: $1" >&2; exit 2 ;;
+    *) break ;;
+  esac
+done
+
+[ $# -ge 1 ] || { echo "Usage: conn [--tmux] [--mosh] [--fwd] <host> [session]" >&2; exit 2; }
+alias_arg="$1"; shift
+SESSION="${1:-main}"
+
+eval "$("${HOME}/.config/bin/hosts" resolve "${alias_arg}")"  # -> name, hostname, mosh_ports
+
+target="${name}"
+[ "${USE_FWD}" = "yes" ] && target="${name}-fwd"
+
+# Bring up the clipboard path before connecting; both are idempotent.
+lemonade-server > /dev/null 2>&1 || true
+lemonade-tunnel "${name}" > /dev/null 2>&1 &
+
+remote_cmd="zsh -l"
+if [ "${USE_TMUX}" = "yes" ]; then
+  socket="${TMUX_SOCKET:-${HOME}/tmp-tmux-socket}"
+  remote_cmd="tmux -S ${socket} new-session -A -s ${SESSION} -c \${HOME} 'zsh -l'"
+fi
+
+if [ "${USE_MOSH}" = "yes" ]; then
+  # Shared hosts often expose only a slice of the UDP range per user.
+  mosh_opts=()
+  [ -n "${mosh_ports}" ] && mosh_opts=(--port "${mosh_ports}")
+  exec mosh "${mosh_opts[@]}" "${target}" -- zsh -l -c "${remote_cmd}"
+else
+  exec ssh -t "${target}" "${remote_cmd}"
+fi

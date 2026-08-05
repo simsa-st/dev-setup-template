@@ -1,0 +1,15 @@
+[project]
+# TODO: rename to the experiment folder name.
+name = "yymmdd-short-name"
+version = "0.1.0"
+description = "One line: what this experiment investigates."
+requires-python = ">=3.13"
+dependencies = [
+    # Runtime dependencies of this experiment only. Nothing here leaks into the
+    # root project, and nothing from the root project is available here.
+]
+
+[tool.uv]
+# Uncomment to develop against a local checkout of a library you also change:
+# [tool.uv.sources]
+# my-lib = { path = "../../../my-lib", editable = true }

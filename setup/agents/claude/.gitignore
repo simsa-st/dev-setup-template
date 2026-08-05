@@ -1,0 +1,11 @@
+# ~/.claude is this directory. Only repo-managed config is tracked; everything
+# the agent writes at runtime (credentials, sessions, history, caches, plugins)
+# is ignored via a whitelist, so a new runtime file never lands in git by
+# accident. `*` matches at every depth, hence the explicit `/**` re-includes.
+*
+!.gitignore
+!settings.json
+!CLAUDE.md
+!commands
+!skills
+!skills/**

@@ -1,0 +1,87 @@
+# Declarative shell environment, symlinked to ~/.config/.bashrc-extra and
+# sourced from ~/.zshrc. Everything machine-independent belongs here; anything
+# machine-specific belongs in config/machine.local.env (gitignored).
+#
+# This file must stay safe to source repeatedly and from a non-interactive
+# shell: the installer sources it too.
+
+export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-${HOME}/.config}"
+
+# Resolve this repo from the location of this file, so the same config works
+# from any checkout path and nothing hard-codes a repo location.
+if [ -n "${BASH_SOURCE:-}" ]; then
+  _devsetup_source="${BASH_SOURCE[0]}"
+elif [ -n "${ZSH_VERSION:-}" ]; then
+  _devsetup_source="${(%):-%N}"
+else
+  _devsetup_source="$0"
+fi
+# this file is setup/config/shell/bashrc-extra, so DEV_SETUP_DIR is three up
+_devsetup_shell_dir="$(dirname "$(realpath "${_devsetup_source}")")"
+export DEV_SETUP_DIR="$(dirname "$(dirname "${_devsetup_shell_dir}")")"
+unset _devsetup_shell_dir
+export DEV_REPO_DIR="$(dirname "${DEV_SETUP_DIR}")"
+unset _devsetup_source
+
+# --- environment layering -----------------------------------------------
+set -a
+[ -f "${DEV_SETUP_DIR}/config/profile.env" ] && . "${DEV_SETUP_DIR}/config/profile.env"
+[ -f "${DEV_SETUP_DIR}/config/machine.local.env" ] && . "${DEV_SETUP_DIR}/config/machine.local.env"
+# Secrets are never committed; see setup/config/secrets/README.md.
+[ -f "${DEV_SETUP_DIR}/config/secrets/env" ] && . "${DEV_SETUP_DIR}/config/secrets/env"
+set +a
+
+# --- PATH ----------------------------------------------------------------
+# Declared as data and applied once, rather than accumulated with exports.
+devsetup_paths=(
+  "${XDG_CONFIG_HOME}/bin"
+  "${HOME}/.local/bin"
+  "${HOME}/go/bin"
+)
+[ -d "${HOME}/.local/share/bob/nvim-bin" ] && devsetup_paths+=("${HOME}/.local/share/bob/nvim-bin")
+
+devsetup_apply_path() {
+  if [ -n "${ZSH_VERSION:-}" ]; then
+    typeset -gU path PATH
+    path=("${devsetup_paths[@]}" "${path[@]}")
+    export PATH
+  else
+    local dir
+    for dir in "${devsetup_paths[@]}"; do
+      case ":${PATH}:" in *":${dir}:"*) ;; *) PATH="${dir}:${PATH}" ;; esac
+    done
+    export PATH
+  fi
+}
+devsetup_apply_path
+
+# --- editor / tools ------------------------------------------------------
+export EDITOR=nvim
+alias v="nvim"
+
+export NVM_DIR="${XDG_CONFIG_HOME}/nvm"
+[ -s "${NVM_DIR}/nvm.sh" ] && . "${NVM_DIR}/nvm.sh"
+
+# --- navigation ----------------------------------------------------------
+alias cs="cd ${DEV_REPO_DIR}"
+alias css="cd ${DEV_SETUP_DIR}"
+
+# --- remote hosts --------------------------------------------------------
+# `conn` resolves aliases and mosh port ranges from config/ssh/hosts.toml and
+# starts the clipboard tunnel; see `conn --help`.
+alias sz="conn"
+alias szt="conn --tmux"
+alias mz="conn --mosh"
+alias mzt="conn --mosh --tmux"
+
+# --- clipboard -----------------------------------------------------------
+alias lemonade="lemonade --host=localhost --port=${LEMONADE_RELAY_PORT:-64011}"
+alias lemonade-tunnels="pgrep -af 'autossh.*lemonade-tunnel'"
+alias lemonade-relay="pgrep -af 'lemonade-relay'"
+
+# --- agents --------------------------------------------------------------
+alias cla="claude --permission-mode auto"
+alias cls="IS_SANDBOX=1 claude --dangerously-skip-permissions"
+
+# TODO(bootstrap): add the aliases and env vars specific to the projects you
+# work on (repo shortcuts, virtualenv activation, cluster contexts, ...).

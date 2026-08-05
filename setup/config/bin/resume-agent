@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Wait, then type text into a tmux pane — used to un-stick or continue a coding
+# agent after a rate-limit window or a long build.
+#
+#   resume-agent 1920 2                  # in 32 min, send "continue" to window 2
+#   resume-agent 5h25m work:2 "continue"
+set -euo pipefail
+
+if [ $# -lt 2 ]; then
+  echo "Usage: $(basename "$0") <seconds|duration> <tmux-target> [text]" >&2
+  echo "Example: $(basename "$0") 5h25m work:2 \"continue\"" >&2
+  exit 2
+fi
+
+duration="$1" target="$2"
+shift 2
+text="${*:-continue}"
+
+if [[ ${duration} =~ ^[0-9]+$ ]]; then
+  seconds=$((10#${duration}))
+elif [[ ${duration} =~ ^(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?$ ]]; then
+  seconds=$((10#${BASH_REMATCH[2]:-0} * 86400 + 10#${BASH_REMATCH[4]:-0} * 3600 +
+    10#${BASH_REMATCH[6]:-0} * 60 + 10#${BASH_REMATCH[8]:-0}))
+else
+  echo "Invalid duration '${duration}'; use seconds or e.g. 5h25m, 7d." >&2
+  exit 2
+fi
+
+echo "Will send '${text}' to tmux target '${target}' in ${seconds}s."
+sleep "${seconds}"
+
+# Send the text and the submit key separately: agent TUIs treat a fast
+# text+Enter burst as a paste and keep it in the buffer instead of submitting.
+tmux -S "${TMUX_SOCKET:-${HOME}/tmp-tmux-socket}" send-keys -t "${target}" -l "${text}"
+sleep 2
+tmux -S "${TMUX_SOCKET:-${HOME}/tmp-tmux-socket}" send-keys -t "${target}" C-m

@@ -1,0 +1,8 @@
+{
+  "defaultProvider": "TODO-provider",
+  "defaultModel": "TODO-model",
+  "packages": [
+    "npm:pi-nvim"
+  ],
+  "theme": "dark"
+}

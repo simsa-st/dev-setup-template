@@ -1,0 +1,9 @@
+# Forwards that do not fit the systematic scheme in hosts.toml. Copied verbatim
+# to ~/.ssh/config.d/custom-forwards by the ssh step.
+#
+# Keep this file small: anything you need on every machine belongs in the
+# [services] table of hosts.toml instead, where the port math is automatic.
+
+# Host gpu-01-fwd
+#     LocalForward 7861 localhost:7860  # gradio
+#     LocalForward 3001 localhost:3000  # dev server

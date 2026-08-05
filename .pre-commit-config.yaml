@@ -1,0 +1,50 @@
+exclude: ^experiments/archive/
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files  # experiment data belongs in data/, not git
+      - id: check-ast
+        exclude: &generated '(^setup/agents/(claude|pi)/|\.ipynb$)'
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-yaml
+        exclude: *generated
+      - id: end-of-file-fixer
+        exclude: *generated
+      - id: trailing-whitespace
+        exclude: *generated
+
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check --fix --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+      - id: ty-check
+        name: ty check
+        entry: uv run ty check --output-format concise --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+      - id: affected-experiment-ty-check
+        name: affected experiment ty check
+        entry: scripts/check_affected_experiments_ty.sh
+        language: system
+        files: ^experiments/[0-9]{6}_.+/(?:.*\.py|pyproject\.toml|uv\.lock)$
+        require_serial: true
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1
+    hooks:
+      - id: shellcheck
+        args: [--severity=warning, --external-sources]
+        exclude: ^setup/config/shell/  # sourced fragments, not standalone scripts

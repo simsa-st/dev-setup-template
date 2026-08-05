@@ -1,0 +1,36 @@
+# The machines you develop on. Copy to hosts.toml and fill in for the concrete
+# environment; `hosts` (setup/config/bin/hosts) turns it into ~/.ssh/config,
+# generated port forwards, and the alias table used by `conn`.
+#
+# Commit hosts.toml if the hostnames are not sensitive; otherwise keep it out of
+# git and treat this file as documentation of the shape.
+
+[defaults]
+user = "TODO-remote-username"
+# jump_host = "bastion.example.com"   # optional ProxyJump for all machines
+# port = 22
+user_id = 1  # your slot on shared machines; feeds the remote-port formula
+slots = 4    # how many concurrent instances of each service to forward
+
+# service -> port prefix; remote = prefix*1000 + user_id*10 + slot
+[services]
+jupyter = 50
+tensorboard = 51
+
+# The reverse forward that carries the clipboard back to the laptop.
+[clipboard]
+local_port = 2489
+remote_port = 64010
+
+[[machines]]
+name = "gpu-01"
+id = 1
+aliases = ["g1", "1"]
+# hostname = "gpu-01.internal.example.com"   # defaults to name
+mosh_ports = "60000:60500"  # UDP range this user may use on a shared host
+
+[[machines]]
+name = "gpu-02"
+id = 2
+aliases = ["g2", "2"]
+mosh_ports = "60501:61000"

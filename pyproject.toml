@@ -1,0 +1,30 @@
+[project]
+# TODO(bootstrap): rename to this repo's name.
+name = "dev-setup"
+version = "0.1.0"
+description = "Personal development environment setup and dated experiments."
+requires-python = ">=3.13"
+dependencies = []
+
+# The root project exists for repo-wide tooling and shared code only. Each
+# experiment carries its own dependencies in its own pyproject.toml.
+[dependency-groups]
+dev = [
+    "pre-commit>=4.3.0",
+    "ruff>=0.15.0",
+    "ty>=0.0.53",
+]
+
+[tool.ruff]
+line-length = 99
+target-version = "py313"
+extend-exclude = ["experiments/archive/", "**/*.ipynb"]
+
+[tool.ruff.lint]
+# Experiment and notebook code legitimately breaks these.
+ignore = ["E402", "E701", "E702", "F401"]
+
+[tool.ty.src]
+# Root ty checks shared/root code only; experiments are checked in their own
+# environments by scripts/check_affected_experiments_ty.sh.
+exclude = ["experiments/"]
