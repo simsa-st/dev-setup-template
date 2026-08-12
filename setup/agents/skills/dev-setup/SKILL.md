@@ -13,6 +13,12 @@ Rules:
 
 - Every step must stay **idempotent**. Never append to a user file — write into
   a `# BEGIN/END DEVSETUP_<name>` managed block, or symlink the repo file.
+- Idempotent means **converging, not skipping**: compare against the value the
+  step wants and rewrite when they differ. A step that returns early because an
+  entry already exists can never repair a stale one — that is how a rotated
+  token keeps failing on every machine that already had the old one.
+- Validate the target and the arguments at the top of an entry point, above
+  anything that relocates, clones or writes.
 - Nothing outside `setup/` may hard-code a repo path. `~/.zshrc` references
   `~/.config/...` only, so moving the checkout means re-pointing symlinks.
 - Values that differ per person go in `config/profile.env`; per machine, in

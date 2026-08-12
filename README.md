@@ -45,6 +45,12 @@ logs cannot drift into git.
 itself, and for commit hygiene live as skills the agents load, not as folklore.
 When a rule changes, it changes in one file for both agents.
 
+**Unattended work has a blueprint.** Handing a goal to a team of agents for
+days while you are away is a repeatable setup, not an improvisation. The
+`proactive-run` skill carries the run layout, the operating protocol, the budget
+pacing, and the verification discipline that decides whether the output can be
+trusted at all.
+
 **Experiments are self-contained and dated.** Each has its own uv project, its
 own README with the question and the answer, and gitignored `data/` and
 `screen_logs/`. They may duplicate each other freely; they must not import each

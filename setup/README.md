@@ -35,13 +35,22 @@ start corrupting dotfiles.
    Never append to a user-owned file: symlink the repo file, or rewrite a
    `# BEGIN/END DEVSETUP_<name>` managed block (`managed_block` in
    `lib/common.sh`).
-2. **No repo paths in dotfiles.** `~/.zshrc` references `~/.config/...` only.
+2. **Converge, do not skip.** "Already present, leaving it alone" is not
+   idempotence — it makes a step incapable of ever fixing a stale value. Compare
+   against the value the step wants and rewrite when they differ. A
+   presence-only check on a credentials file is how a rotated token keeps
+   failing on every machine that already had the old one.
+3. **Refuse the wrong environment before doing anything.** Validate the target
+   and the arguments at the very top of an entry point, above any step that
+   relocates, clones or writes — a guard below such a step cannot undo what it
+   did.
+4. **No repo paths in dotfiles.** `~/.zshrc` references `~/.config/...` only.
    Moving the checkout re-points symlinks; it does not edit `$HOME`.
-3. **Back up before replacing.** Anything real that a symlink would overwrite is
+5. **Back up before replacing.** Anything real that a symlink would overwrite is
    moved to `~/dev-setup-backups/<timestamp>/` (`link`, `backup_path`).
-4. **No root on Linux.** Shared machines are installed user-locally into
+6. **No root on Linux.** Shared machines are installed user-locally into
    `~/.config/bin`. If a step needs `sudo`, it belongs on macOS only.
-5. **Layered configuration.** `config/profile.env` (committed, same everywhere)
+7. **Layered configuration.** `config/profile.env` (committed, same everywhere)
    → `config/machine.local.env` (gitignored, per machine) → `config/secrets/env`
    (gitignored, never committed).
 
@@ -110,3 +119,8 @@ same way. Agent-specific skills go directly in that agent's `skills/` dir.
 
 Note the one incompatibility: pi prompts interpolate `$@`, Claude Code commands
 use `$ARGUMENTS`. Shared prompts avoid both and state their target in prose.
+
+`agents/claude/statusline.sh` renders the status line and, as a side effect,
+writes the subscription rate-limit numbers to `/tmp/claude-rate-limits*.json`.
+That snapshot is the only programmatic access to those numbers, and it is what
+lets an unattended run pace its own budget (the `proactive-run` skill).

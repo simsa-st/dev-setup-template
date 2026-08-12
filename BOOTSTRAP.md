@@ -71,9 +71,9 @@ next job or machine.
 - Set the provider/model in `setup/agents/pi/agent/settings.json` and the model
   in `setup/agents/claude/settings.json`.
 - Keep the generic skills (`experiments`, `dev-setup`, `restructure-commits`,
-  `explore-agent`, `tmux-subtasks`). Add environment-specific ones — issue
-  tracker, code review, deployment, the domain tools you use — as new
-  directories in `setup/agents/skills/`, symlinked into both agents:
+  `explore-agent`, `tmux-subtasks`, `proactive-run`). Add environment-specific
+  ones — issue tracker, code review, deployment, the domain tools you use — as
+  new directories in `setup/agents/skills/`, symlinked into both agents:
   ```bash
   ln -s ../../skills/<name> setup/agents/claude/skills/<name>
   ln -s ../../../skills/<name> setup/agents/pi/agent/skills/<name>
