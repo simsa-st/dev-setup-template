@@ -18,6 +18,18 @@ Experiments live in `${DEV_REPO_DIR}/experiments/<YYMMDD_short_name>/`. Read
   its runtime dependencies and a `README.md` runbook that states how to rerun
   it. Never add experiment-only dependencies to the repo root project.
 
+## Long-running experiments
+
+- An experiment spanning many sessions needs somewhere its operating knowledge
+  survives compaction: an artifact map (what each file is for), the runbook, and
+  the traps already hit. Keep it in the experiment's `README.md`, or as a
+  temporary skill alongside the others when agents should load it automatically.
+- Write to it **the moment** something is worth remembering — a trap, a renamed
+  artifact, a decision — not at the end of the session. Delete a temporary skill
+  when the experiment closes; whatever still matters moves into the README.
+- An experiment run by agents while nobody watches is a different shape again:
+  see the `proactive-run` skill.
+
 ## Data and logs
 
 - Everything reproducible — downloads, generated datasets, checkpoints, exports
