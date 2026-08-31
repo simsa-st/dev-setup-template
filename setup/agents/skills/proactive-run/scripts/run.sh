@@ -101,9 +101,9 @@ cmd_start() {
   if [ -f "${pid_file}" ] && proc_alive "$(cat "${pid_file}")"; then
     echo "heartbeat already running (pid $(cat "${pid_file}"))"
   else
-    nohup setsid "${SKILL_DIR}/scripts/heartbeat.sh" \
-      >> "${RUN_DIR}/meta/heartbeat.log" 2>&1 &
-    echo $! > "${pid_file}"
+    DETACH_LOG="${RUN_DIR}/meta/heartbeat.log"
+    export DETACH_LOG
+    detach "${SKILL_DIR}/scripts/heartbeat.sh" > "${pid_file}"
     echo "heartbeat loop started (pid $(cat "${pid_file}"))"
   fi
 

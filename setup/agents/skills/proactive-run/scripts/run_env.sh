@@ -190,6 +190,21 @@ lock_do() { # <lockfile> <function-or-command...>
   fi
 }
 
+# Start a process that outlives this shell, logging where DETACH_LOG says.
+# setsid puts it in its own process group, so a wakeup can be killed as a group
+# and never takes its caller with it; macOS has no setsid, where nohup alone is
+# close enough and the pid is killed directly — a replaced wakeup's sleep can
+# outlive it there, harmlessly, since the process that would have typed is the
+# one that died. Prints the pid.
+detach() { # <command...>
+  if command -v setsid > /dev/null 2>&1; then
+    nohup setsid "$@" >> "${DETACH_LOG:-/dev/null}" 2>&1 &
+  else
+    nohup "$@" >> "${DETACH_LOG:-/dev/null}" 2>&1 &
+  fi
+  echo $!
+}
+
 # True only for a process that is actually running. `kill -0` succeeds for a
 # zombie too, and this run's own background processes — setsid'd wakeups, the
 # heartbeat loop — are never reaped, so a wakeup that has already FIRED keeps

@@ -35,9 +35,9 @@ if [ -f "${pid_file}" ] && proc_alive "$(cat "${pid_file}")"; then
   kill -- -"${old}" 2> /dev/null || kill "${old}" 2> /dev/null || true
 fi
 
-nohup setsid resume-agent "${delay}" "${target}" "${text}" \
-  >> "${RUN_DIR}/meta/wakeup_${tag}.log" 2>&1 &
-echo $! > "${pid_file}"
+DETACH_LOG="${RUN_DIR}/meta/wakeup_${tag}.log"
+export DETACH_LOG
+detach resume-agent "${delay}" "${target}" "${text}" > "${pid_file}"
 echo "wakeup '${tag}' scheduled in ${delay} for ${target} (pid $(cat "${pid_file}"))"
 
 # What is armed after this call — the only honest answer to "does that agent
