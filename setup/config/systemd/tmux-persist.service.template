@@ -1,0 +1,19 @@
+# Rendered to ~/.config/systemd/user/tmux-persist.service by step_sessions;
+# __PLACEHOLDERS__ come from setup/config/profile.env and the local PATH.
+#
+# The job itself is ~/.config/bin/tmux-persist, which explains why the saving
+# is scheduled here instead of being left to tmux-continuum.
+[Unit]
+Description=Save the tmux layout and the Claude name map
+Documentation=file:%h/.config/bin/tmux-persist
+
+[Service]
+Type=oneshot
+# A user unit inherits almost no environment: the socket path and a PATH that
+# contains tmux both have to be stated.
+Environment=TMUX_SOCKET=__TMUX_SOCKET__
+Environment=PATH=__PATH__
+ExecStart=%h/.config/bin/tmux-persist
+TimeoutStartSec=60
+MemoryMax=128M
+Nice=10

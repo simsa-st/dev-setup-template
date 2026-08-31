@@ -1,0 +1,19 @@
+# Rendered to ~/.config/systemd/user/tmux-persist.timer by step_sessions.
+#
+# The interval is the worst-case loss on an unplanned reboot, and two minutes
+# buys that for a job that reads a few small files.
+#
+# It matters less than it looks: a resumed Claude session keeps its id, so a
+# long-running conversation is recorded correctly from its first sync onward.
+# The only thing genuinely at risk in the window is a conversation started (or
+# /clear-ed) in the last two minutes.
+[Unit]
+Description=Keep the tmux layout and Claude name map current
+
+[Timer]
+OnBootSec=__INTERVAL__
+OnUnitActiveSec=__INTERVAL__
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

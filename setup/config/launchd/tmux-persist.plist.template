@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Rendered to ~/Library/LaunchAgents/__LABEL__.plist by step_sessions;
+  __PLACEHOLDERS__ come from setup/config/profile.env.
+
+  The macOS half of the session-persistence loop. Linux runs the same script
+  from a systemd timer (setup/config/systemd/); this is the laptop's scheduler.
+  It matters less here than on an always-on box -- a laptop reboots when you
+  say so -- but the save is what makes `prefix + Ctrl-r` after any restart
+  bring the windows and the conversations back.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>__LABEL__</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>__BIN_DIR__/tmux-persist</string>
+  </array>
+
+  <!-- launchd starts an agent with a minimal PATH (/usr/bin:/bin:/usr/sbin:/sbin)
+       and none of the shell's environment, so tmux has to be findable without a
+       login shell and the socket cannot come from a profile that was never
+       sourced. Both are passed explicitly, the same way the systemd unit does. -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>__PATH__</string>
+    <key>TMUX_SOCKET</key>
+    <string>__TMUX_SOCKET__</string>
+  </dict>
+
+  <!-- StartInterval counts from load, and a tick missed while the laptop slept
+       fires once on wake rather than backfilling each one it skipped. -->
+  <key>StartInterval</key>
+  <integer>__INTERVAL__</integer>
+
+  <!-- The script prints nothing on a successful run, so this file only grows
+       when something actually failed, and it is the first place to look. -->
+  <key>StandardOutPath</key>
+  <string>__LOG__</string>
+  <key>StandardErrorPath</key>
+  <string>__LOG__</string>
+
+  <!-- Never take CPU or IO from whatever is in the foreground; the systemd unit
+       sets Nice=10 for the same reason. -->
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>LowPriorityIO</key>
+  <true/>
+  <key>Nice</key>
+  <integer>10</integer>
+</dict>
+</plist>

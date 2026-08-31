@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Save what a reboot would otherwise destroy: the tmux layout, and the map from
+# Remote Control name to conversation. Run on a timer by lib/sessions.sh
+# (systemd on Linux, launchd on macOS); safe to run by hand at any time.
+#
+# Saving from a timer rather than from tmux-continuum's own triggers, because
+# both of continuum's are wrong for a machine that reboots while detached:
+#
+#   * its periodic save is driven from `status-right`, which tmux only evaluates
+#     for an *attached* client. A box nobody is looking at never saves.
+#   * @continuum-boot installs a tmux.service whose ExecStop saves on shutdown,
+#     but only for a server it started itself. A server started by an ssh login
+#     leaves that unit inactive and its ExecStop never fires.
+#
+# A timer has neither problem: it does not care who owns the server or whether
+# anyone is watching it.
+#
+# No `set -e`: "no tmux server running" is an ordinary state for a scheduled
+# job, not a failure worth turning a timer red.
+set -uo pipefail
+
+socket="${TMUX_SOCKET:-${HOME}/tmp-tmux-socket}"
+bin="${XDG_CONFIG_HOME:-${HOME}/.config}/bin"
+save="${HOME}/.tmux/plugins/tmux-resurrect/scripts/save.sh"
+
+# Order matters. The name map is read out of live processes and the layout out
+# of the live server; recording the map first means a run that dies half way
+# through still leaves the harder-to-recover half on disk.
+[ -x "${bin}/claude-panes" ] && "${bin}/claude-panes" sync --quiet
+
+tmux -S "${socket}" list-sessions > /dev/null 2>&1 || exit 0
+
+if [ ! -x "${save}" ]; then
+  echo "tmux-persist: tmux-resurrect is not installed; run ./setup/install.sh --only tmux" >&2
+  exit 1
+fi
+
+# Via `run-shell` on the server's own socket, not by invoking save.sh directly.
+# resurrect calls bare `tmux`, which finds only the default socket -- and this
+# setup runs its server on a private one (TMUX_SOCKET in profile.env). Run
+# straight from a scheduler, save.sh cannot reach the server, writes a
+# zero-byte save file over the good one, and still exits 0. `run-shell` hands
+# the script to the server that already exists, which is also how resurrect's
+# own key binding invokes it.
+tmux -S "${socket}" run-shell "${save} quiet"

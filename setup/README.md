@@ -22,6 +22,7 @@ Steps run in this order, each one a `step_<name>` function in `lib/`:
 | `tools` | uv, node/nvm, repo pre-commit hook |
 | `nvim` | bob + the pinned neovim, clone/symlink the config repo |
 | `agents` | Claude Code and pi: install binaries, symlink config into `$HOME` |
+| `sessions` | timer that saves the tmux layout and the agent name map |
 | `clipboard` | lemonade server (macOS) or client + host IP (Linux) |
 | `ssh` | generate `~/.ssh/config` and port forwards from `hosts.toml` |
 | `finish` | print what to run next |
@@ -65,6 +66,7 @@ setup/
 │   ├── shell.sh            zsh, tmux, git
 │   ├── tools.sh            uv, node, neovim
 │   ├── agents.sh           Claude Code + pi
+│   ├── sessions.sh         save/restore tmux + agent sessions across reboots
 │   └── clipboard.sh        lemonade + ssh config
 ├── config/
 │   ├── profile.env(.example)   identity, pinned versions, ports
@@ -72,6 +74,7 @@ setup/
 │   ├── tmux/tmux.conf
 │   ├── git/config.template
 │   ├── ssh/hosts.toml(.example), custom-forwards
+│   ├── systemd/, launchd/      unit templates for the persistence timer
 │   ├── bin/                    symlinked into ~/.config/bin (on PATH)
 │   └── secrets/                gitignored; see its README
 └── agents/
@@ -106,6 +109,36 @@ tunnel command ensures the remote relay is up. The relay exists because the
 tunnel binds loopback only, which processes in other namespaces cannot reach.
 tmux yanks pipe through `clipboard-copy`, whose lemonade hop is what makes copy
 work over mosh < 1.4 (it drops OSC 52).
+
+## Sessions that survive a reboot
+
+```text
+tmux-persist (timer, every 2 min)
+   ├─▶ claude-panes sync   name → conversation map   ~/.local/state/claude-panes
+   └─▶ resurrect save.sh   windows, layouts, cwds    ~/.local/share/tmux/resurrect
+                                                              │
+                       reboot ──▶ continuum restore ──────────┘
+                                        └─▶ claude-panes restore ──▶ claude-pane <name>
+```
+
+A restored pane is only useful if what was running in it comes back too, and a
+pane's command line (`claude`) does not say which conversation that was. So the
+name is declared up front — `claude-pane <name>` — and the map from name to
+conversation is saved alongside the layout.
+
+Three things about this were found the hard way and are worth not rediscovering:
+
+- **Continuum cannot do the saving here.** Its periodic save is driven from
+  `status-right`, which tmux evaluates only for an *attached* client, and its
+  `@continuum-boot` unit saves on shutdown only for a server it started itself.
+  A box that reboots while nobody is attached would never save. Hence the timer.
+- **resurrect's `save.sh` must run through `tmux run-shell`.** Called directly
+  from a scheduler it uses bare `tmux`, finds only the default socket, writes a
+  zero-byte save file over the good one, and exits 0.
+- **`@resurrect-processes` cannot restore an agent TUI.** It sends the command
+  the instant it creates the pane, and a zsh still sourcing its startup files
+  swallows the line without a trace. `claude-panes restore` waits for an idle
+  prompt, sends, and confirms the process is up.
 
 ## Agents
 

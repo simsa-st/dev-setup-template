@@ -62,6 +62,7 @@ source "${DEV_SETUP_DIR}/lib/packages.sh"
 source "${DEV_SETUP_DIR}/lib/shell.sh"
 source "${DEV_SETUP_DIR}/lib/tools.sh"
 source "${DEV_SETUP_DIR}/lib/agents.sh"
+source "${DEV_SETUP_DIR}/lib/sessions.sh"
 source "${DEV_SETUP_DIR}/lib/clipboard.sh"
 
 # Ordered list of steps. Each name maps to a `step_<name>` function.
@@ -74,6 +75,7 @@ STEPS=(
   tools
   nvim
   agents
+  sessions
   clipboard
   ssh
   finish
