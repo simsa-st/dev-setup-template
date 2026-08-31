@@ -134,6 +134,20 @@ lock_do() { # <lockfile> <function-or-command...>
   fi
 }
 
+# True only for a process that is actually running. `kill -0` succeeds for a
+# zombie too, and this run's own background processes — setsid'd wakeups, the
+# heartbeat loop — are never reaped, so a wakeup that has already FIRED keeps
+# answering "still pending" forever. One run had all ten recorded wakeup pids
+# pass `kill -0` while not one was armed: the scheduler and the watchdog that
+# was meant to catch it both believed the manager had a cycle coming.
+proc_alive() { # <pid>
+  local pid=${1:-} state
+  [ -n "${pid}" ] || return 1
+  state=$(ps -o stat= -p "${pid}" 2> /dev/null | tr -d ' ')
+  [ -n "${state}" ] || return 1
+  case "${state}" in Z*) return 1 ;; *) return 0 ;; esac
+}
+
 now_utc() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
 # GNU and BSD date disagree on parsing; try both so these scripts work on a

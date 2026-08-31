@@ -98,7 +98,7 @@ cmd_start() {
   "${SKILL_DIR}/scripts/agent.sh" start manager
 
   local pid_file="${RUN_DIR}/meta/heartbeat.pid"
-  if [ -f "${pid_file}" ] && kill -0 "$(cat "${pid_file}")" 2> /dev/null; then
+  if [ -f "${pid_file}" ] && proc_alive "$(cat "${pid_file}")"; then
     echo "heartbeat already running (pid $(cat "${pid_file}"))"
   else
     nohup setsid "${SKILL_DIR}/scripts/heartbeat.sh" \
@@ -118,7 +118,7 @@ cmd_stop() {
   for pid_file in "${RUN_DIR}"/meta/heartbeat.pid "${RUN_DIR}"/meta/wakeup_*.pid; do
     [ -f "${pid_file}" ] || continue
     pid=$(cat "${pid_file}")
-    if kill -0 "${pid}" 2> /dev/null; then
+    if proc_alive "${pid}"; then
       kill -- -"${pid}" 2> /dev/null || kill "${pid}" 2> /dev/null || true
       echo "killed $(basename "${pid_file}" .pid) (pid ${pid})"
     fi

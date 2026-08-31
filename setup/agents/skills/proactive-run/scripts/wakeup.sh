@@ -19,16 +19,29 @@ role=${3:?role or window required}
 shift 3
 text=${*:-continue}
 target=$(target_of "${role}")
-pid_file="${RUN_DIR}/meta/wakeup_${tag}.pid"
 
-if [ -f "${pid_file}" ]; then
+# Refuse to arm against a window that does not exist. A wakeup reports its bad
+# target only when it fires, so without this check a typo or a renamed window
+# costs the hours between arming and the silence that follows.
+if ! window_exists "${role}"; then
+  echo "wakeup: no window '${role}' in ${RUN_SESSION} — refusing to arm '${tag}'" >&2
+  echo "  windows: $(window_list)" >&2
+  exit 1
+fi
+
+pid_file="${RUN_DIR}/meta/wakeup_${tag}.pid"
+if [ -f "${pid_file}" ] && proc_alive "$(cat "${pid_file}")"; then
   old=$(cat "${pid_file}")
-  if kill -0 "${old}" 2> /dev/null; then
-    kill -- -"${old}" 2> /dev/null || kill "${old}" 2> /dev/null || true
-  fi
+  kill -- -"${old}" 2> /dev/null || kill "${old}" 2> /dev/null || true
 fi
 
 nohup setsid resume-agent "${delay}" "${target}" "${text}" \
   >> "${RUN_DIR}/meta/wakeup_${tag}.log" 2>&1 &
 echo $! > "${pid_file}"
 echo "wakeup '${tag}' scheduled in ${delay} for ${target} (pid $(cat "${pid_file}"))"
+
+# What is armed after this call — the only honest answer to "does that agent
+# have a cycle coming?", and the check the heartbeat repeats every beat.
+for f in "${RUN_DIR}"/meta/wakeup_*.pid; do
+  [ -f "${f}" ] && proc_alive "$(cat "${f}")" && echo "  pending: $(basename "${f}" .pid)"
+done
