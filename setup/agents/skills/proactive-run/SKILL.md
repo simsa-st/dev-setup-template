@@ -1,6 +1,6 @@
 ---
 name: proactive-run
-description: Use when setting up, operating, or closing an unattended multi-agent run — a team of agents working a goal for days while nobody is watching (vacation, a week off, or spending the rest of a usage window). Covers the run layout, the operating protocol, budget pacing, the verification discipline that makes unattended output trustworthy, and the failure modes worth pre-empting. Works in both Claude Code and pi.
+description: Use when setting up, operating, recovering or closing a multi-agent run — a team of agents in tmux windows working one goal for days, either unattended while nobody is watching (vacation, a week off, spending the rest of a usage window) or attended with you driving. Covers the run layout, the operating protocol, budget pacing, the verification discipline that makes the output trustworthy, and the failure modes worth pre-empting. Works in both Claude Code and pi.
 ---
 
 # proactive-run
@@ -16,8 +16,17 @@ irreversible action. Not worth it for one well-scoped task (use
 `tmux-subtasks`) or for anything whose value depends on a decision only the
 absent human can make.
 
+The same machinery runs a second shape, and runs it well: an **attended** run,
+where you are around most of the day and drive, and the session exists so you
+can walk into any piece of work and take the keyboard. Most of what follows
+still applies; what changes is in `templates/ATTENDED.md`, and the difference
+is worth respecting — the rules that make an unattended run work (never wait,
+decide everything yourself, no questions) are actively wrong when the person
+who owns the decision is sitting right there.
+
 The scripts here are the machinery; `templates/` are the fill-in-the-blanks
-documents. The rest of this file is what two such runs taught, condensed.
+documents. The rest of this file is what several such runs taught, condensed —
+every line of it was bought with a failure.
 
 ## Shape
 
@@ -25,6 +34,7 @@ One run directory, dated like an experiment (`YYMMDD_short_name/`):
 
 ```text
 PROTOCOL.md          binding rules for every agent — the one authority
+WORKER_PROTOCOL.md   how a disposable worker behaves, read before its own prompt
 STATUS.md            live dashboard, owned by the manager, rewritten each cycle
 REPORT.md            living human-first report; what the human reads first
 context/             distilled inputs, INDEX.md first; read-only during the run
@@ -33,21 +43,23 @@ comms/inbox/<who>.md inboxes, incl. one for the human; comms/read/ archives
 logs/<who>.md        append-only event log, one line per external action
 scratchpads/<who>.md compact state + ranked next actions, rewritten constantly
 artifacts/           everything that should survive: results, evidence, plans
-meta/                machine state: run.env, wakeup pids, heartbeat log
+meta/                machine state: run.env, wakeup pids, heartbeat log,
+                     target_<who> for an agent that has moved
 ```
 
-Roles, each in a fixed tmux window, each a first-level manager with its own
-workers:
+Roles, each in a tmux window named after it — never addressed by index, since
+a window whose command fails is destroyed and the rest renumber — and each a
+first-level manager with its own workers:
 
 | Role | Owns | Notes |
 |---|---|---|
-| `heartbeat` | window 0 | fresh cheap session per beat, killed and respawned; repairs machinery only, never does the work |
+| `heartbeat` | the machinery, including its own | fresh cheap session per beat, killed and respawned; repairs, never does the work |
 | `manager` | direction, tasking, pacing, STATUS.md, REPORT.md | orchestrates, does not implement; decides everything the human would |
 | `tester` | behaviour as a *user* sees it | personas, real flows, real data; never reads code to excuse bad UX |
 | `reviewer` | code/design quality and the path to production | owns the plan documents; biased toward deletion |
 | `evaluator` | scores against the stated criteria on request | independent; flags work serving no criterion |
 | `ideator` | a ranked, mechanism-verified backlog | proposes, never implements |
-| workers (`cw-*`) | one task each | own git worktree, own prompt file, own result file |
+| workers (`cw-*`) | one task each | own git worktree, own prompt file, own result file; stands by when done, the spawner closes it |
 
 Scale down freely — a small run is manager + one critic + workers. Keep the
 heartbeat at any size; it is what makes the run survive the night.
@@ -87,7 +99,11 @@ These are prompt-level rules for every agent — they are in
 - **One line per event in your own log**, with the URL or path. This is what
   makes the run auditable when it is over.
 - **Messages go to files, nudges go to idle windows only.** Never type into a
-  working agent. Workers report only to their spawner.
+  working agent by accident — decide and type in the same breath, because a
+  pane judged idle a minute ago may not be. Workers report only to their
+  spawner. Keep one deliberate second tier (`send --wake`) for what must not
+  wait a cycle: the one-tier rule assumes every recipient has a next cycle,
+  and a turn-based manager or an agent whose wakeup was lost does not.
 - **Agents cannot wake themselves.** Before ending a turn that expects future
   work, schedule a wakeup, deduplicated by tag.
 - **Compact when a work block ends and the scratchpad is current.** Long stale
@@ -156,9 +172,77 @@ line below is a finding, not a principle.
   back (`git status --porcelain`, the rendered screen, the row in the database).
 - **A single grep form is not a complete map.** Verify removal scope by
   behaviour, and sweep callers by value shape as well as by symbol.
+- **Prove the check could have failed, before trusting that it passed.** In one
+  night five checks turned out to be *incapable* of failing: a pre-commit that
+  reported clean four times without the linter that was failing, a schema too
+  simple to express the bug, a rehearsal substrate with no redundancy to
+  collapse, a selector that silently matched a different test, a skip that read
+  as a pass. Print the skip count next to the pass count, and assert that a
+  mutated input turns the check red.
+- **A correct measurement plus a wrong inference is the commonest defect, and
+  it does not feel like one.** "I found a mechanism that produces this" reads
+  as an answer when it is only a candidate. The missing step is always the
+  same: **construct the case where your mechanism and its likeliest rival
+  disagree, and run that** — against the other party's actual inputs, not a
+  case of your own. Across a night of cross-checking, no two agents ever
+  disagreed about a measurement; they disagreed three times about what someone
+  else had measured, and every underlying number was right.
+- **Grepping to confirm something is *there* is safe — a hit cannot lie.
+  Grepping to confirm it is *gone* must collapse whitespace first**, because a
+  line break manufactures exactly the absence being claimed (and `grep -F --`
+  for anything dash-prefixed).
+- **An import failure has two ends.** Name the remover *and* the importer: a
+  `git log -S` found the commit that deleted a symbol and a reviewer stopped
+  there and ruled the failing tests obsolete — the tests never referenced it,
+  and the real cause was two checkouts disagreeing. Whether the test file was
+  even collected is part of the question.
+- **A ref name is not a spelling of a commit.** Re-pin immediately before
+  *reporting*, not only before starting; fifteen minutes of analysis was once
+  reported against a head that had moved twice underneath it.
 - Where a run keeps finding the same class of defect, say so as a **convention**
   ("every write says what it did"; "a real value must be distinguishable from
   an absent one") — a convention is adoptable, six fixes are just six fixes.
+  You can then *measure* the adoption: when eight branches that had never
+  shared a tree were merged, they needed one fix-commit to compose, against six
+  for the previous train. Seams that are not there to find is what a convention
+  taking hold looks like.
+
+## Comparing two directions
+
+A run that builds two implementations to choose between them is measuring, and
+measurement has its own discipline — most of a night was lost relearning it.
+
+- **Pre-register what the criteria mean, and that a tie is a valid result**,
+  before either branch is built. Scoring invented afterwards will punish the
+  track that turned out to be right, and everyone will be able to explain why.
+- **Freeze one canonical base and put both tracks on it.** A base that moves
+  under a comparison turns every difference into an argument. Check that the
+  base does not already contain one track's architecture, or you have measured
+  the base.
+- **Run the null comparison first** — the same thing against itself. If A vs A
+  shows a difference, the harness is what you are measuring.
+- **Interleave the measurements**, never batch them: a shared machine's load is
+  not constant, and A-then-B measures the afternoon.
+- **Print a digest of the output next to every timing.** Otherwise a speedup
+  can be paid for with quietly changed output — one was, and the digest is what
+  caught the base silently rendering unfiltered results.
+- Measure at the **real data shape**. A fixture is uniform and small, which is
+  exactly where a per-item cost hides; a green suite is no evidence about speed.
+
+## Integration
+
+- **Prove nothing *moved*, not that nothing *conflicted*.** A clean rebase says
+  git found no textual disagreement; it says nothing about whether your content
+  survived. If the base fast-forwarded, `diff(old base → old head)` must be
+  byte-identical to `diff(new base → new head)`. If the base was rewritten that
+  comparison differs for uninteresting reasons — use per-commit `git patch-id`,
+  which normalises them away.
+- **Which comparisons survive being quoted**: a commit sha never (it embeds a
+  timestamp); a tree sha only for identical content, and not for a conflicted
+  `merge-tree`, whose files carry marker text; stage blobs always.
+- **A loud conflict is a cheap one.** The expensive case is two changes that
+  break each other with no file in common, so audit merge *order* by behaviour
+  and not by counting conflicts.
 
 ## Failure modes to pre-empt
 
@@ -177,9 +261,19 @@ line below is a finding, not a principle.
   shared DNS alias — two workers picking the same alias cost three
   investigations.
 - **Kill only through the stop script**, which exits the agent cleanly before
-  killing the window; a killed window leaves an orphan process. Never kill on
-  a reported pid — verify by process tree and working directory. Make kill
-  patterns not match the killing command itself.
+  killing the window. Killing the window alone leaves the agent running: where
+  the pane is a `docker exec`, one run accumulated 85 orphans and 33 GB of
+  memory in six days. Kill **by a pid you recorded**, verified by process tree
+  and working directory — never by a name pattern, which is how two separate
+  sweeps killed live workers belonging to someone else. And never close a
+  worker whose work is still open; park it on standby, because reviving it
+  costs more than leaving it idle.
+- **The machinery's own checks need checking, and they fail the same way:
+  answering "yes" forever.** A liveness test that a zombie passes, a wakeup
+  armed against a window that does not exist, a heartbeat that creates a window
+  where the agent never starts — each one keeps every downstream thing looking
+  healthy while the run quietly stops. Validate at arm time rather than at fire
+  time, and give the watchdog a step that checks itself.
 - **Re-source credentials immediately before every write batch**; never cache
   them across days. Rotated tokens mid-run are normal.
 - **Restart a service as a sequence, not a command**: kill, confirm the port is
@@ -200,10 +294,21 @@ line below is a finding, not a principle.
   do, what counts as done, how many steps it should take) can be executed by
   cheap agents at every checkpoint. Requirements and user stories translate
   directly.
+- **Test a handover by using it, not by reviewing it.** Spawn an agent whose
+  instruction is to follow the documentation *literally* and never repair it in
+  its head: run the commands as written, in the order written, and record every
+  stuck point plus what a newcomer would plausibly do next. "Obviously you'd
+  also need to…" is the finding, and reviewing cannot produce it — the
+  reviewers already know the answers. It found a setup command that answered
+  200 from the wrong backend, and a deployment section that would have taken
+  the stack down.
 - **Budget a real multi-hour close-out** from the start: re-open every item
   against live truth rather than trusting old summaries, exercise the basic
   flow once more, then write. The first run's shallow finalization changed
   conclusions when redone properly.
+- A long-lived report that outlives its phase needs a **staleness banner and a
+  known-stale list** at the top, naming what supersedes it. Two runs reopened
+  a closed report, and a reader cannot tell which half is current.
 - At the deadline: finalize the report and dashboard, push branches, commit the
   run folder, cancel wakeups, log the finish, all agents idle.
 
@@ -217,7 +322,7 @@ directory. Read the header of each for its arguments.
 | `run.sh init\|start\|stop` | scaffold a run, bring up the session + manager + heartbeat, wind down |
 | `agent.sh start\|restart\|check\|stop <role>` | fresh start, resume with context, classify state, clean exit |
 | `worker.sh <name> <prompt-file> [cwd] [model] [spawner]` | disposable worker in its own window |
-| `message.sh send\|read\|log` | inboxes and event logs |
+| `message.sh send [--wake]\|read\|log` | inboxes and event logs; `--wake` types the nudge whatever the recipient is doing |
 | `wakeup.sh <tag> <delay> <role> [text]` | self-nudge, replacing any pending wakeup with the same tag |
 | `time_status.sh` | deadline, elapsed/remaining, usage vs linear target, machine load |
 | `heartbeat.sh` | detached loop that respawns a fresh checker session every beat |
