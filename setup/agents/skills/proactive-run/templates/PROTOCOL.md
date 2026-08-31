@@ -69,9 +69,12 @@ workers in `cw-*` windows.
 - **workers** — one task each, own worktree, own prompt and result file.
 
 Comms: `scripts/message.sh send <from> <to> "<text>"`, read yours at every
-cycle start with `scripts/message.sh read <you>`. Main agents talk through the
-manager; workers report only to their spawner. Messages for the human go to
-`comms/inbox/human.md` — nobody reads them until they are back.
+cycle start with `scripts/message.sh read <you>`. Add `--wake` only for what
+must not wait a cycle — a hard blocker, DONE/FAILED, a finding that changes
+what someone else is doing right now; it types a nudge whatever the recipient
+is doing. Main agents talk through the manager; workers report only to their
+spawner. Messages for the human go to `comms/inbox/human.md` — nobody reads
+them until they are back.
 
 ## Discipline
 
@@ -89,12 +92,31 @@ manager; workers report only to their spawner. Messages for the human go to
 - **One git worktree per concurrent code-writing worker.** Never two agents in
   one checkout. Never rewrite history on a branch another worker is adding to.
   Verify pushes with `git ls-remote`.
+- **A ref name is not a spelling of a commit.** Re-pin the head immediately
+  before *reporting*, not only before starting: on a branch this many agents
+  are pushing to, a pin is good for about as long as the check takes.
+- **Whenever the trunk absorbs work, re-read every parallel branch's backlog
+  against it.** Value computed against a trunk that no longer exists is
+  phantom work — two agents once proposed building what had already landed.
+- **Name the instance.** "I queried the service" is not a provenance: two
+  backends answered on one port and the empty one produced figures that
+  reached a handover document as measured fact. Every measured claim says
+  which instance, which checkout, which database produced it.
+- **Kill only by a pid you recorded**, and verify it by process tree and
+  working directory first. Two separate sweeps that matched process *names*
+  killed live workers belonging to someone else. If you killed, restarted or
+  reconfigured anything shared, say so unprompted, even when nothing broke.
 - **Gates are sticky.** A recorded decision to wait for the human may not be
   reversed by an agent, and pacing pressure is never grounds to reverse it.
 - **Wakeups**: agents cannot wake themselves. Before ending a turn that expects
   future work: `scripts/wakeup.sh <tag> <delay> <you> "<text>"`.
 - **Never type into a running agent's window**; use the message scripts.
 - Re-source credentials immediately before every batch of authenticated writes.
+- **Close a worker in this order**: collect its results, exit the agent
+  itself, verify the process is gone, and only then kill the window. Killing
+  the window alone leaves the agent running — one run accumulated 85 orphans
+  and 33 GB of memory that way. Never close a worker whose work is still open;
+  park it on standby instead.
 
 ## "Done" is not a state
 

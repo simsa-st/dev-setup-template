@@ -17,7 +17,7 @@ cmd_init() {
   name=${name:-$(basename "${dir}")}
 
   mkdir -p "${dir}"/{context,prompts,comms/inbox,comms/read,logs,scratchpads,artifacts,meta}
-  for f in PROTOCOL.md STATUS.md; do
+  for f in PROTOCOL.md WORKER_PROTOCOL.md STATUS.md; do
     [ -f "${dir}/${f}" ] || cp "${SKILL_DIR}/templates/${f}" "${dir}/${f}"
   done
   for f in role_prompt.md heartbeat_check.md; do

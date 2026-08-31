@@ -225,5 +225,6 @@ directory. Read the header of each for its arguments.
 The usage figures come from the snapshot the agent's status line writes (see
 `setup/agents/claude/statusline.sh`); without it every other line still works.
 `wakeup.sh` needs `resume-agent` from this repo's `config/bin` on `PATH`.
-`templates/` holds `PROTOCOL.md`, `STATUS.md`, `role_prompt.md` and
-`heartbeat_check.md` — `run.sh init` copies them into the run.
+`templates/` holds `PROTOCOL.md`, `WORKER_PROTOCOL.md`, `STATUS.md`,
+`role_prompt.md` and `heartbeat_check.md` — `run.sh init` copies them into the
+run — plus `ATTENDED.md` and `recovery.md`, which are copied in when needed.

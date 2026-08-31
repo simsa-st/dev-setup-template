@@ -45,12 +45,12 @@ while true; do
   # position of the window called name" and so cannot create it.
   tmx kill-window -t "${target}" 2> /dev/null
   if ! tmx new-window -d -t "${RUN_SESSION}" -n heartbeat "${cmd}" 2> /dev/null; then
-    hb_log "BEAT FAILED: could not create ${target} — the loop is alive and doing nothing"
+    hb_log "BEAT_FAILED: could not create ${target} — the loop is alive and doing nothing"
   elif wait_for_agent_ui "${target}" 90; then
     send_to_agent "${target}" "Read ${RUN_DIR}/prompts/heartbeat_check.md and follow it."
     hb_log "beat: checker prompted"
   else
-    hb_log "BEAT FAILED: checker UI did not appear — check RUN_WINDOW_CMD and the agent binary"
+    hb_log "BEAT_FAILED: checker UI did not appear — check RUN_WINDOW_CMD and the agent binary"
   fi
 
   remaining=$((end + grace - $(date -u +%s)))
