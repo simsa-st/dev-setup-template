@@ -156,6 +156,12 @@ same way. Agent-specific skills go directly in that agent's `skills/` dir.
 Note the one incompatibility: pi prompts interpolate `$@`, Claude Code commands
 use `$ARGUMENTS`. Shared prompts avoid both and state their target in prose.
 
+`agents/claude/CLAUDE.md` becomes `~/.claude/CLAUDE.md`: the machine-wide
+instructions every session on this box starts with. It is for what is true of
+the *machine* rather than of a repo — the private tmux socket, how to read and
+talk to another session, that an overnight reboot is scheduled rather than a
+crash. Per-repo instructions stay in that repo's own `CLAUDE.md`.
+
 `agents/claude/statusline.sh` renders the status line and, as a side effect,
 writes the subscription rate-limit numbers to `/tmp/claude-rate-limits*.json`.
 That snapshot is the only programmatic access to those numbers, and it is what

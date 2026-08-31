@@ -70,6 +70,12 @@ next job or machine.
 
 - Set the provider/model in `setup/agents/pi/agent/settings.json` and the model
   in `setup/agents/claude/settings.json`.
+- Fill in `setup/agents/claude/CLAUDE.md`, the machine-wide instructions every
+  session starts with. Answer the two `TODO(bootstrap)` markers in it: what this
+  machine is and what happens to it unattended, and what every session should
+  know before its first tool call. On a shared or always-on box this is the
+  cheapest documentation in the repo — without it each session rediscovers the
+  same facts, badly.
 - Keep the generic skills (`experiments`, `dev-setup`, `restructure-commits`,
   `explore-agent`, `tmux-subtasks`, `proactive-run`). Add environment-specific
   ones — issue tracker, code review, deployment, the domain tools you use — as
@@ -101,6 +107,9 @@ Then verify, and fix what fails rather than noting it:
 - [ ] Copying in remote tmux copy-mode lands in the local clipboard — over mosh
       too, not just ssh.
 - [ ] `claude` and `pi` both start and both list the shared skills.
+- [ ] `cla <name>` starts a session, `claude-panes list` shows it, and after
+      `prefix + Ctrl-s` / `prefix + Ctrl-r` (or a real reboot) the window comes
+      back with that conversation in it.
 - [ ] `uv run pre-commit run --all-files` passes.
 - [ ] Nothing secret is tracked: `git ls-files | grep -i -E 'secret|token|\.env$|\.pem$'`
       returns nothing but examples.
