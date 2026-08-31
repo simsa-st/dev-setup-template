@@ -89,6 +89,7 @@ setup/
 | `hosts resolve\|list\|ssh-config` | the machine table: aliases and generated SSH config |
 | `clipboard-copy` | stdin → local clipboard from anywhere (pbcopy → lemonade → OSC 52) |
 | `lemonade-server`, `lemonade-tunnel`, `lemonade-relay` | the clipboard path |
+| `tmux-say <tmux-target> <text>` | say something to an agent in another window |
 | `resume-agent <delay> <tmux-target> [text]` | poke a waiting agent later |
 
 ## Clipboard

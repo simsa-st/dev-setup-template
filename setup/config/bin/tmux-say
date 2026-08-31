@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Send a message to an agent session running in another tmux window.
+#
+#   tmux-say work:2 'take a look at the pacing table'
+#
+# Use it rather than raw send-keys. Doing this by hand goes wrong in two ways
+# that are invisible until they bite:
+#
+#   * `send-keys 'text' Enter` in one call submits before the TUI has taken the
+#     text, so the prompt arrives truncated or not at all. The Enter has to be a
+#     separate call, after a pause.
+#   * without `-l`, send-keys reads words in the message as key names, so a
+#     message containing "Enter" or "Space" is silently mangled.
+#
+# Same sequence `resume-agent` uses after its delay, and the same one
+# proactive-run's send_to_agent uses. Read the answer with `capture-pane`.
+set -euo pipefail
+
+target=${1:?usage: tmux-say <session:window> <text...>}
+shift
+[ "$#" -gt 0 ] || {
+  echo "tmux-say: nothing to send" >&2
+  exit 2
+}
+
+# Inside a pane $TMUX names the socket; outside one, fall back to the private
+# socket this setup uses (TMUX_SOCKET in profile.env) rather than the default,
+# which usually has no server on it.
+tmux_cmd=(tmux)
+[ -n "${TMUX:-}" ] || tmux_cmd=(tmux -S "${TMUX_SOCKET:-${HOME}/tmp-tmux-socket}")
+
+"${tmux_cmd[@]}" send-keys -t "${target}" -l "$*"
+sleep 2
+"${tmux_cmd[@]}" send-keys -t "${target}" C-m
+echo "sent to ${target}"
