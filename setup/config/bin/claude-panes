@@ -235,8 +235,13 @@ def pane_children(target: str) -> str:
     exec. A whitelist of shell names cannot tell those apart, and would call a
     successful launch a failure on any box whose login shell is bash.
 
-    Reading the pane's direct children answers both questions exactly: empty
-    means an idle prompt, and a match means the thing we asked for is running.
+    Reading the pane's direct children answers the second question exactly: a
+    match means the thing we asked for is running. It answers the first one only
+    approximately -- an idle prompt is usually childless, but a prompt with
+    async machinery in it forks briefly on every render (measured on macOS with
+    oh-my-zsh's git-prompt: a `(zsh)` fork and a gitstatus.py). That only costs
+    the caller its 15s idle wait before sending anyway, which is why the send is
+    followed by a confirmation rather than trusted.
     """
     result = tmux("display-message", "-p", "-t", target, "#{pane_pid}")
     if result.returncode != 0:
