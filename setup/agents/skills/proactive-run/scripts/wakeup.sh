@@ -23,7 +23,7 @@ target=$(target_of "${role}")
 # Refuse to arm against a window that does not exist. A wakeup reports its bad
 # target only when it fires, so without this check a typo or a renamed window
 # costs the hours between arming and the silence that follows.
-if ! window_exists "${role}"; then
+if ! window_exists "${target}"; then
   echo "wakeup: no window '${role}' in ${RUN_SESSION} — refusing to arm '${tag}'" >&2
   echo "  windows: $(window_list)" >&2
   exit 1

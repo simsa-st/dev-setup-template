@@ -1,12 +1,22 @@
 #!/usr/bin/env bash
 # Inboxes and event logs — the run's whole communication system.
 #
-#   message.sh send <from> <to> <text...>   append to <to>'s inbox; nudge only if idle
+#   message.sh send [--wake] <from> <to> <text...>
 #   message.sh read <who>                   print and archive <who>'s inbox
 #   message.sh log  <who> <text...>         append one timestamped line to <who>'s log
 #
 # `to` is a role, a worker window (cw-<name>), or `human` (file only — nobody is
-# watching). A busy recipient is never typed into; it reads at its next cycle.
+# watching). Every message lands in the inbox file; the difference is when the
+# recipient finds out:
+#
+#   default   file-only, plus a nudge if the recipient happens to be idle. The
+#             right choice for almost everything: progress, results, questions
+#             that can wait a cycle. A busy recipient is never typed into.
+#   --wake    also types a nudge whatever the recipient is doing, so it lands as
+#             their next input. For what must not wait a cycle — a hard blocker,
+#             DONE/FAILED, a finding the human needs relayed now. Use sparingly;
+#             a turn-based recipient that self-schedules nothing has no other
+#             way to hear you, and that is what this is for.
 set -uo pipefail
 SKILL_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 # shellcheck source=run_env.sh
@@ -17,6 +27,11 @@ shift
 
 case "${action}" in
   send)
+    wake=0
+    if [ "${1:-}" = "--wake" ]; then
+      wake=1
+      shift
+    fi
     from=${1:?from required}
     to=${2:?to required}
     shift 2
@@ -32,12 +47,21 @@ case "${action}" in
       echo "left in the human's inbox"
       exit 0
     fi
-    # Capture fully, then take line 1: piping agent.sh into head would SIGPIPE it.
-    state=$(head -n1 <<< "$("${SKILL_DIR}/scripts/agent.sh" check "${to}")")
-    if [ "${state}" = "STATE=IDLE" ]; then
-      send_to_agent "$(target_of "${to}")" \
-        "New inbox message from ${from} — run ${SKILL_DIR}/scripts/message.sh read ${to} and act on it."
-      echo "delivered + nudged (${to} idle)"
+
+    target=$(target_of "${to}")
+    nudge="[${from}] New inbox message — run ${SKILL_DIR}/scripts/message.sh read ${to} and act on it."
+    if [ "${wake}" = 1 ]; then
+      if send_to_agent_now "${target}" "${nudge}"; then
+        echo "delivered + woke ${to} (${target})"
+      else
+        echo "delivered to inbox (could not reach ${target})"
+      fi
+      exit 0
+    fi
+
+    state=$(pane_state "${target}")
+    if [ "${state}" = "IDLE" ]; then
+      send_to_agent "${target}" "${nudge}" && echo "delivered + nudged (${to} idle)"
     else
       echo "delivered to inbox (${to} ${state} — no nudge, it reads at its next cycle)"
     fi
@@ -67,7 +91,7 @@ case "${action}" in
     printf -- '- %s %s\n' "$(now_utc)" "$*" >> "${RUN_DIR}/logs/${who}.md"
     ;;
   *)
-    sed -n '2,9p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
+    sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
     exit 2
     ;;
 esac

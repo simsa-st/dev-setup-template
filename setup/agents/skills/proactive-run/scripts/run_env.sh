@@ -54,14 +54,24 @@ role_names() { local spec; for spec in ${RUN_ROLES}; do printf '%s\n' "${spec%%:
 # already qualified: prefixing the session twice yields a target no window can
 # match, and whatever was aimed at it fails silently — one run lost 16 wakeups
 # that way, each one visible only in a log hours later, when it fired.
+#
+# meta/target_<who> overrides the answer, one line, `session:window`. An agent
+# that has moved — restarted elsewhere, or resumed in a new session after a
+# crash — writes its new address there and stays reachable by name.
 target_of() { # <role-or-window>
-  printf '%s:%s' "${RUN_SESSION}" "${1#"${RUN_SESSION}:"}"
+  local who=${1#"${RUN_SESSION}:"}
+  if [ -s "${RUN_DIR}/meta/target_${who}" ]; then
+    head -n1 "${RUN_DIR}/meta/target_${who}"
+    return 0
+  fi
+  printf '%s:%s' "${RUN_SESSION}" "${who}"
 }
 
-window_exists() { # <window>
-  local w=${1#"${RUN_SESSION}:"}
-  tmx list-windows -t "${RUN_SESSION}" -F '#{window_index} #{window_name}' 2> /dev/null |
-    grep -qE "^${w} |^[0-9]+ ${w}\$"
+window_exists() { # <window | session:window>
+  local t=$1
+  case "${t}" in *:*) ;; *) t="${RUN_SESSION}:${t}" ;; esac
+  tmx list-windows -t "${t%%:*}" -F '#{window_index} #{window_name}' 2> /dev/null |
+    grep -qE "^${t#*:} |^[0-9]+ ${t#*:}\$"
 }
 
 window_list() {
