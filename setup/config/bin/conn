@@ -31,6 +31,10 @@ SESSION="${1:-main}"
 
 eval "$("${HOME}/.config/bin/hosts" resolve "${alias_arg}")"  # -> name, hostname, mosh_ports
 
+# The three variables above come out of the eval, which shellcheck cannot see
+# into. Deliberately not pre-declared: `set -u` failing loudly on a resolve that
+# emitted nothing beats connecting to an empty host name.
+# shellcheck disable=SC2154
 target="${name}"
 [ "${USE_FWD}" = "yes" ] && target="${name}-fwd"
 

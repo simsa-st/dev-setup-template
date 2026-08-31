@@ -130,7 +130,9 @@ def generate_forwards(config: dict) -> str:
             for service, prefix in services.items():
                 remote = prefix * 1000 + user_id * 10 + slot
                 local = prefix * 1000 + machine_id * 10 + slot
-                lines.append(f"    LocalForward {local} localhost:{remote}  # {service} slot {slot}")
+                lines.append(
+                    f"    LocalForward {local} localhost:{remote}  # {service} slot {slot}"
+                )
         lines.append("")
     return "\n".join(lines)
 

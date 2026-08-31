@@ -37,7 +37,7 @@ step_shell() {
   # shellcheck disable=SC1091
   source "${XDG_CONFIG_HOME}/.bashrc-extra"
   [ "${DEV_SETUP_DIR}" = "${expected}" ] ||
-    die "~/.config/.bashrc-extra resolves to ${DEV_SETUP_DIR}, expected ${expected}"
+    die "${XDG_CONFIG_HOME}/.bashrc-extra resolves to ${DEV_SETUP_DIR}, expected ${expected}"
 }
 
 install_oh_my_zsh() {

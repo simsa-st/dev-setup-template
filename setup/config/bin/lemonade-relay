@@ -20,8 +20,8 @@ import subprocess
 import sys
 import threading
 
-RELAY_PORT = int(os.environ.get("LEMONADE_RELAY_PORT", 64011))
-DEFAULT_TUNNEL_PORT = int(os.environ.get("LEMONADE_TUNNEL_PORT", 64010))
+RELAY_PORT = int(os.environ.get("LEMONADE_RELAY_PORT", "64011"))
+DEFAULT_TUNNEL_PORT = int(os.environ.get("LEMONADE_TUNNEL_PORT", "64010"))
 
 
 def pump(source: socket.socket, destination: socket.socket) -> None:
@@ -84,7 +84,9 @@ def restart(tunnel_port: int) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--restart", action="store_true", help="kill any relay and relaunch detached")
+    parser.add_argument(
+        "--restart", action="store_true", help="kill any relay and relaunch detached"
+    )
     parser.add_argument("--serve", action="store_true", help="run the relay in the foreground")
     parser.add_argument("tunnel_port", nargs="?", type=int, default=DEFAULT_TUNNEL_PORT)
     args = parser.parse_args()

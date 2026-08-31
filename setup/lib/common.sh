@@ -25,7 +25,8 @@ backup_path() { # <path>
   local path="$1"
   [ -e "${path}" ] || return 0
   [ -L "${path}" ] && return 0
-  local dest="$(backup_dir)/$(basename "${path}")"
+  local dest
+  dest="$(backup_dir)/$(basename "${path}")"
   log "backing up ${path} -> ${dest}"
   mv "${path}" "${dest}"
 }

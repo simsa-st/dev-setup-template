@@ -18,7 +18,7 @@ install_release_binary() { # <name> <url> [<path-inside-archive>]
   local tmp
   tmp=$(mktemp -d)
   (
-    cd "${tmp}"
+    cd "${tmp}" || exit 1
     curl -fsSL "${url}" -o archive
     case "${url}" in
       *.tar.gz | *.tgz) tar -xzf archive ;;
