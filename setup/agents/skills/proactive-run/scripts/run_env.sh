@@ -68,10 +68,56 @@ window_list() {
   tmx list-windows -t "${RUN_SESSION}" -F '#{window_index}:#{window_name}' 2> /dev/null | tr '\n' ' '
 }
 
+# Classify what is in a window: RUNNING | IDLE | LIMIT | STOPPED | NO_WINDOW.
+# A heuristic — read the pane yourself before acting on it. The input line
+# renders BELOW the working area, so an agent eleven minutes into a tool call
+# shows a bare prompt at the bottom of its pane and reads as idle: never judge
+# from the last line.
+pane_state() { # <target>
+  local pane tail
+  pane=$(tmx capture-pane -p -t "$1" 2> /dev/null) || { echo NO_WINDOW; return 0; }
+  tail=$(grep -v '^$' <<< "${pane}" | tail -25)
+  # The elapsed timer is the busy marker that always holds. Do NOT match the
+  # spinner's verb: it is randomised, so any word list you write is incomplete
+  # and will call a working agent idle. The minutes part is optional, and that
+  # is not a detail — a pattern demanding `[0-9]+m [0-9]+s` is blind for the
+  # first 60 seconds of every turn, which is exactly when an agent has just been
+  # given work and is most likely to be looked at. One run typed into three
+  # working agents through that hole, in the rule written to prevent it.
+  if grep -qE '\(([0-9]+m )?[0-9]+s · |esc to interrupt|esc to cancel|ctrl\+b to run in background' <<< "${tail}"; then
+    echo RUNNING
+  # Only a real limit banner: agents constantly *mention* resets in their own
+  # prose, so a bare "resets at" must not classify as LIMIT.
+  elif grep -qiE '(reached|exceeded|hit) (your|the)? ?(usage|5-hour|weekly|session)? ?limit|limit (reached|exceeded)|out of (tokens|credits)' <<< "${tail}"; then
+    echo LIMIT
+  elif grep -qE 'shift\+tab to cycle|❯' <<< "${tail}"; then
+    echo IDLE
+  else
+    echo STOPPED
+  fi
+}
+
 # Type a message into an agent TUI and submit it. Agent TUIs treat a fast
 # text+Enter burst as a paste and leave it unsent, so send the text, let paste
-# detection settle, then submit separately. Never call this on a busy agent.
+# detection settle, then submit separately.
+#
+# The state is re-read here, immediately before typing, and not trusted from
+# whatever decided to call this: the gap between judging a pane idle and typing
+# into it is where this goes wrong.
 send_to_agent() { # <target> <text...>
+  local target=$1
+  shift
+  if [ "$(pane_state "${target}")" = RUNNING ]; then
+    echo "refusing to type into ${target}: it is working (send_to_agent_now queues it deliberately)" >&2
+    return 1
+  fi
+  send_to_agent_now "${target}" "$@"
+}
+
+# Type into a window whatever its state; the text queues as the agent's next
+# input. For deliberate interruptions only — a stop, or a wake that must not
+# wait for the recipient's next cycle.
+send_to_agent_now() { # <target> <text...>
   local target=$1
   shift
   tmx send-keys -t "${target}" -l "$*"

@@ -68,26 +68,14 @@ case "${action}" in
     fi
     ;;
   check)
-    if ! pane=$(tmx capture-pane -p -t "${target}" 2> /dev/null); then
-      echo "STATE=NO_WINDOW"
-      exit 0
-    fi
-    tail=$(grep -v '^$' <<< "${pane}" | tail -25)
-    state=STOPPED
-    # Busy markers: the interrupt hint, the spinner's token counter, or the
-    # run-in-background hint.
-    if grep -qE "esc to interrupt|esc to cancel|ctrl\+b to run in background|·[[:space:]]*[↑↓].*tokens" <<< "${tail}"; then
-      state=RUNNING
-    # Only real limit banners: agents constantly *mention* resets in their own
-    # prose, so a bare "resets at" must not classify as LIMIT.
-    elif grep -qiE "(reached|exceeded|hit) (your|the)? ?(usage|5-hour|weekly|session)? ?limit|limit (reached|exceeded)|out of (tokens|credits)" <<< "${tail}"; then
-      state=LIMIT
-    elif grep -qE "shift\+tab to cycle|❯" <<< "${tail}"; then
-      state=IDLE
-    fi
+    state=$(pane_state "${target}")
     echo "STATE=${state}"
+    [ "${state}" = "NO_WINDOW" ] && exit 0
     echo "--- pane tail (${target}):"
-    printf '%s\n' "${tail}"
+    tmx capture-pane -p -t "${target}" | grep -v '^$' | tail -25
+    # STATE is a heuristic and this tail is a snapshot. Before typing into a
+    # window this calls IDLE, capture it again and compare: a busy pane changes,
+    # an idle one does not.
     ;;
   stop)
     # Exiting the agent first matters: killing the window alone leaves the

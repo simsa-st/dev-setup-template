@@ -125,7 +125,7 @@ cmd_stop() {
     rm -f "${pid_file}"
   done
 
-  send_to_agent "$(target_of manager)" \
+  send_to_agent_now "$(target_of manager)" \
     "STOP: the run is being wound down. Tell every agent and worker to finish the current step and go idle, finalize REPORT.md and STATUS.md, update logs and scratchpads, commit the run folder, then stop scheduling anything." || true
   echo "wind-down message sent to the manager"
 }
