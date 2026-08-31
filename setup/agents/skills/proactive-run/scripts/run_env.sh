@@ -22,7 +22,7 @@ export RUN_DIR
 [ -f "${RUN_DIR}/meta/run.env" ] && source "${RUN_DIR}/meta/run.env"
 
 : "${RUN_SESSION:?set RUN_SESSION in meta/run.env}"
-: "${RUN_ROLES:?set RUN_ROLES in meta/run.env (name:window:model ...)}"
+: "${RUN_ROLES:?set RUN_ROLES in meta/run.env (name:model ...)}"
 export TMUX_SOCKET="${TMUX_SOCKET:-${HOME}/tmp-tmux-socket}"
 export RUN_WORK_DIR="${RUN_WORK_DIR:-${RUN_DIR}}"
 export RUN_WINDOW_CMD="${RUN_WINDOW_CMD:-${SHELL:-/bin/bash}}"
@@ -36,27 +36,36 @@ export RUN_RATE_LIMIT_SNAPSHOT="${RUN_RATE_LIMIT_SNAPSHOT:-/tmp/claude-rate-limi
 
 tmx() { tmux -S "${TMUX_SOCKET}" "$@"; }
 
-# RUN_ROLES is "name:window:model" triples, so the window and model maps have a
-# single source of truth shared with PROTOCOL.md.
-role_field() { # <role> <1=window|2=model>
-  local role=$1 field=$2 spec
+# RUN_ROLES is "name:model" pairs, so the model map has one source of truth,
+# shared with PROTOCOL.md. Every window is addressed by NAME — a role's window
+# is named after the role, a worker's after the worker (cw-<name>). An index is
+# not a stable address: a window whose command fails is destroyed, the rest
+# renumber, and the next thing addressed at that index is somebody else's work.
+role_model() { # <role>
+  local role=$1 spec
   for spec in ${RUN_ROLES}; do
-    case "${spec}" in
-      "${role}":*) printf '%s' "$(printf '%s' "${spec}" | cut -d: -f$((field + 1)))"; return 0 ;;
-    esac
+    case "${spec}" in "${role}":*) printf '%s' "${spec#*:}"; return 0 ;; esac
   done
   return 1
 }
-role_window() { role_field "$1" 1; }
-role_model() { role_field "$1" 2; }
 role_names() { local spec; for spec in ${RUN_ROLES}; do printf '%s\n' "${spec%%:*}"; done; }
 
-# A role name resolves to its fixed window; anything else (a cw-* worker) is
-# addressed by window name directly.
+# Qualify a role or worker window with the session, tolerating a target that is
+# already qualified: prefixing the session twice yields a target no window can
+# match, and whatever was aimed at it fails silently — one run lost 16 wakeups
+# that way, each one visible only in a log hours later, when it fired.
 target_of() { # <role-or-window>
-  local w
-  w=$(role_window "$1" 2> /dev/null) || w=$1
-  printf '%s:%s' "${RUN_SESSION}" "${w}"
+  printf '%s:%s' "${RUN_SESSION}" "${1#"${RUN_SESSION}:"}"
+}
+
+window_exists() { # <window>
+  local w=${1#"${RUN_SESSION}:"}
+  tmx list-windows -t "${RUN_SESSION}" -F '#{window_index} #{window_name}' 2> /dev/null |
+    grep -qE "^${w} |^[0-9]+ ${w}\$"
+}
+
+window_list() {
+  tmx list-windows -t "${RUN_SESSION}" -F '#{window_index}:#{window_name}' 2> /dev/null | tr '\n' ' '
 }
 
 # Type a message into an agent TUI and submit it. Agent TUIs treat a fast
@@ -96,14 +105,12 @@ agent_launch_cmd() { # <model> [extra-args...]
 
 # Open a window running a shell in the run's working environment. RUN_WINDOW_CMD
 # is a plain shell locally, or e.g. `docker exec -it -w /work <container> zsh`.
-ensure_window() { # <window> [name]
-  local window=$1 name=${2:-}
-  tmx list-windows -t "${RUN_SESSION}" -F '#{window_index}' 2> /dev/null | grep -qx "${window}" && return 0
-  if [ -n "${name}" ]; then
-    tmx new-window -d -t "${RUN_SESSION}:${window}" -n "${name}" "${RUN_WINDOW_CMD}"
-  else
-    tmx new-window -d -t "${RUN_SESSION}:${window}" "${RUN_WINDOW_CMD}"
-  fi
+# Create against the SESSION, never against `session:name`: tmux reads that as
+# "at the position of the window called name", so it cannot create one.
+ensure_window() { # <window>
+  local name=${1#"${RUN_SESSION}:"}
+  window_exists "${name}" && return 0
+  tmx new-window -d -t "${RUN_SESSION}" -n "${name}" "${RUN_WINDOW_CMD}"
 }
 
 # Serialize inbox reads/writes: several agents and workers append concurrently.

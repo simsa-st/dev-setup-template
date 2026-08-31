@@ -46,9 +46,9 @@ RUN_AGENT_ARGS='--dangerously-skip-permissions'
 RUN_MODEL_FLAG=--model
 RUN_CONTINUE_FLAG=--continue
 
-# name:window:model — window 0 is the heartbeat by convention. Keep in sync with
+# name:model — each role gets a window named after it. Keep in sync with
 # PROTOCOL.md; drop roles you do not need.
-RUN_ROLES='heartbeat:0:TODO-cheap-model manager:1:TODO-model tester:2:TODO-model reviewer:3:TODO-model evaluator:4:TODO-model'
+RUN_ROLES='heartbeat:TODO-cheap-model manager:TODO-model tester:TODO-model reviewer:TODO-model evaluator:TODO-model'
 
 # Deadline, and the reset of the usage window if one falls inside the run.
 RUN_DEADLINE_UTC=TODO-YYYY-MM-DDTHH:MM:SSZ
@@ -79,7 +79,7 @@ cmd_start() {
   if ! tmx has-session -t "${RUN_SESSION}" 2> /dev/null; then
     tmx new-session -d -s "${RUN_SESSION}" -n "$(role_names | head -n1)" "${RUN_WINDOW_CMD}"
     for role in $(role_names | tail -n +2); do
-      ensure_window "$(role_window "${role}")" "${role}"
+      ensure_window "${role}"
     done
     echo "created session ${RUN_SESSION}"
   else

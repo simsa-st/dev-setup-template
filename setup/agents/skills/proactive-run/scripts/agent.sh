@@ -39,7 +39,7 @@ exit_agent() {
 
 case "${action}" in
   start)
-    ensure_window "$(role_window "${role}")" "${role}"
+    ensure_window "${role}"
     exit_agent || { echo "ERROR: old agent in ${target} did not exit; not launching ${role}" >&2; exit 1; }
     tmx send-keys -t "${target}" "cd ${RUN_WORK_DIR}" Enter
     sleep 1
