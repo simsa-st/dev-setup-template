@@ -61,6 +61,11 @@ network changes, tmux for sessions that survive disconnects, a lemonade relay so
 copying in a remote editor lands in the local clipboard, and a systematic
 port-forwarding scheme so ports never need to be picked by hand.
 
+**Work survives a reboot, agents included.** The tmux layout and the map from
+agent session name to conversation are saved on a timer and replayed afterwards,
+so a box that patches its own kernel overnight comes back with its windows — and
+the conversations that were in them — rather than a blank server.
+
 ## Quick tour after instantiating
 
 ```bash
