@@ -80,8 +80,26 @@ alias lemonade-tunnels="pgrep -af 'autossh.*lemonade-tunnel'"
 alias lemonade-relay="pgrep -af 'lemonade-relay'"
 
 # --- agents --------------------------------------------------------------
-alias cla="claude --permission-mode auto"
-alias cls="IS_SANDBOX=1 claude --dangerously-skip-permissions"
+# Functions rather than aliases so they can take a name. Bare `cla` is the
+# throwaway case -- a session nobody needs to find again. `cla <name>` is the
+# durable one: it goes through claude-pane, which gives the session a Remote
+# Control name that stays the same on the phone and lets the conversation be
+# resumed into the same tmux pane after a reboot (config/bin/claude-pane).
+cla() {
+  if [ "$#" -gt 0 ]; then
+    claude-pane "$1" --permission-mode auto "${@:2}"
+  else
+    claude --permission-mode auto
+  fi
+}
+
+cls() {
+  if [ "$#" -gt 0 ]; then
+    IS_SANDBOX=1 claude-pane "$1" --dangerously-skip-permissions "${@:2}"
+  else
+    IS_SANDBOX=1 claude --dangerously-skip-permissions
+  fi
+}
 
 # TODO(bootstrap): add the aliases and env vars specific to the projects you
 # work on (repo shortcuts, virtualenv activation, cluster contexts, ...).
