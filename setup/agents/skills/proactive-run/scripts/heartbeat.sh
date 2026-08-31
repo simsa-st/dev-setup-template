@@ -18,8 +18,12 @@ model=$(role_model heartbeat)
 hb_log() { echo "$(now_utc) $*"; }
 
 # Respawn runs on the tmux host side, so wrap the agent in the run's window
-# command (a plain shell locally, docker exec in a containerised setup).
-inner="cd ${RUN_WORK_DIR} && $(agent_launch_cmd "${model}") \"Read ${RUN_DIR}/prompts/heartbeat_check.md and follow it.\""
+# command (a plain shell locally, docker exec in a containerised setup). Launch
+# the agent with NO prompt argument and send the prompt afterwards, exactly as a
+# worker is started: an inline prompt has to survive this loop's quoting and
+# then the shell's, and when it does not the window comes up empty, the UI never
+# appears, and the loop logs one failure an hour while doing nothing at all.
+inner="cd ${RUN_WORK_DIR} && $(agent_launch_cmd "${model}")"
 cmd="${RUN_WINDOW_CMD} -ic '${inner}'"
 
 hb_log "heartbeat loop started (every ${interval}s until ${RUN_DEADLINE_UTC})"
@@ -35,9 +39,19 @@ while true; do
   fi
 
   hb_log "beat: respawning the checker in ${target}"
-  tmx respawn-window -k -t "${target}" "${cmd}" 2> /dev/null ||
-    hb_log "respawn-window failed (retrying next beat)"
-  wait_for_agent_ui "${target}" 90 || hb_log "checker UI did not appear"
+  # Kill and create, never `respawn-window -k`: respawn reuses the pane, and an
+  # agent launched through `docker exec -it` never comes up under a reused one.
+  # Create against the SESSION with -n, since `-t session:name` means "at the
+  # position of the window called name" and so cannot create it.
+  tmx kill-window -t "${target}" 2> /dev/null
+  if ! tmx new-window -d -t "${RUN_SESSION}" -n heartbeat "${cmd}" 2> /dev/null; then
+    hb_log "BEAT FAILED: could not create ${target} — the loop is alive and doing nothing"
+  elif wait_for_agent_ui "${target}" 90; then
+    send_to_agent "${target}" "Read ${RUN_DIR}/prompts/heartbeat_check.md and follow it."
+    hb_log "beat: checker prompted"
+  else
+    hb_log "BEAT FAILED: checker UI did not appear — check RUN_WINDOW_CMD and the agent binary"
+  fi
 
   remaining=$((end + grace - $(date -u +%s)))
   if [ "${remaining}" -lt "${interval}" ]; then
