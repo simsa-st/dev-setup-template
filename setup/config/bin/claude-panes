@@ -1,0 +1,429 @@
+#!/usr/bin/env python3
+"""Track which Claude Code conversation is living under each Remote Control name.
+
+    claude-panes sync                 # refresh from the live session registry
+    claude-panes restore              # relaunch sessions into restored panes
+    claude-panes list                 # show what would be restored
+    claude-panes bind <name> <uuid>   # adopt an existing conversation
+    claude-panes forget <name>
+
+The problem this solves is that nothing durable ties a Remote Control name to a
+conversation. Claude Code keeps <claude config>/sessions/<pid>.json while a
+session runs -- it holds the session id, the cwd and the tmux pane -- but it is
+keyed by pid and reaped on exit. The Remote Control name is not in there at all:
+it lives server-side against a bridge session regenerated on every launch. So a
+reboot destroys both halves of the mapping, and an unattended one (a box that
+patches its own kernel at 04:00) destroys them with nobody watching.
+
+`claude-pane <name>` supplies the half that cannot be discovered, by writing a
+pid -> name binding into a runtime directory. This script supplies the other
+half by joining that binding against the live registry through the process table
+(a registry file is named after the Claude process, whose parent is the
+claude-pane that named it), and writes the result somewhere that survives a
+reboot. After tmux-resurrect has put the panes back, `claude-panes restore`
+replays a `claude-pane <name>` into each one, and each of those resumes the
+right conversation under the right name.
+
+Run from the tmux-persist timer rather than only at exit, because a session id
+is not fixed for the life of a process: /clear starts a new conversation in the
+same pane, and a snapshot taken only at shutdown would miss it.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+HOME = Path.home()
+CLAUDE_DIR = Path(os.environ.get("CLAUDE_CONFIG_DIR", HOME / ".claude"))
+STATE_DIR = Path(os.environ.get("XDG_STATE_HOME", HOME / ".local/state")) / "claude-panes"
+SESSIONS_JSON = STATE_DIR / "sessions.json"
+RUNTIME_DIR = Path(os.environ.get("XDG_RUNTIME_DIR") or os.environ.get("TMPDIR") or "/tmp")
+BIND_DIR = RUNTIME_DIR / "claude-panes/binds"
+REGISTRY_DIR = CLAUDE_DIR / "sessions"
+PROJECTS_DIR = CLAUDE_DIR / "projects"
+
+
+# A name nobody has launched for two months is stale, not pending. Pruning keeps
+# `list` honest about what a restore would actually bring back.
+STALE_AFTER_SECONDS = 60 * 24 * 3600
+
+
+def load_state() -> dict:
+    try:
+        with SESSIONS_JSON.open() as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return {"version": 1, "names": {}}
+    data.setdefault("version", 1)
+    data.setdefault("names", {})
+    return data
+
+
+def save_state(data: dict) -> None:
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    data["updated"] = int(time.time())
+    # Written via a temp file in the same directory: a sync racing a launch must
+    # never leave a half-written sessions.json, because claude-pane treats an
+    # unparseable file as "no id" and would silently start a fresh conversation.
+    tmp = SESSIONS_JSON.with_suffix(".json.tmp")
+    with tmp.open("w") as fh:
+        json.dump(data, fh, indent=2, sort_keys=True)
+        fh.write("\n")
+    tmp.replace(SESSIONS_JSON)
+
+
+def live_sessions() -> list[dict]:
+    """Every Claude session the local registry currently knows about."""
+    out = []
+    for path in sorted(REGISTRY_DIR.glob("*.json")):
+        try:
+            with path.open() as fh:
+                entry = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        if entry.get("sessionId"):
+            out.append(entry)
+    return out
+
+
+def ps(*args: str) -> str:
+    """Read from the process table. `ps` rather than /proc, which macOS lacks."""
+    result = subprocess.run(["ps", *args], capture_output=True, text=True, check=False)
+    return result.stdout if result.returncode == 0 else ""
+
+
+def parent_pid_of(pid: int) -> int | None:
+    """The pid that launched this Claude process.
+
+    Registry files are named after the Claude process itself, and claude-pane
+    runs claude as a direct child, so the parent pid is claude-pane's own pid --
+    which is the key it wrote its binding under. Taking it from the process
+    table rather than trusting the registry's `tmux` field is what makes the
+    join exact: tmux pane ids are per-server and would collide between servers.
+    """
+    out = ps("-o", "ppid=", "-p", str(pid)).strip()
+    try:
+        return int(out)
+    except ValueError:
+        return None
+
+
+def pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:  # someone else's process, but it exists
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def prune_dead_binds() -> None:
+    """Drop bindings whose claude-pane process is gone.
+
+    A tmpfs runtime dir clears these at boot anyway; this keeps a long uptime
+    (and a macOS TMPDIR, which does not clear) from accumulating one file per
+    session ever started.
+    """
+    try:
+        entries = list(BIND_DIR.iterdir())
+    except OSError:
+        return
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        if not pid_alive(int(entry.name)):
+            entry.unlink(missing_ok=True)
+
+
+def transcript_exists(session_id: str) -> bool:
+    return any(PROJECTS_DIR.glob(f"*/{session_id}.jsonl"))
+
+
+def cmd_sync(argv: list[str]) -> int:
+    quiet = "--quiet" in argv
+    prune_dead_binds()
+    state = load_state()
+    names = state["names"]
+    now = int(time.time())
+    changed = []
+
+    for entry in live_sessions():
+        ppid = parent_pid_of(entry.get("pid", -1))
+        if ppid is None:
+            continue
+        try:
+            bind = (BIND_DIR / str(ppid)).read_text().splitlines()
+        except OSError:
+            # A session started as plain `claude` rather than through
+            # claude-pane. It has no declared name, so there is nothing that
+            # could be restored for it -- skip rather than invent one.
+            continue
+        rc_name = bind[0].strip() if bind else ""
+        extra_args = bind[1].strip() if len(bind) > 1 else ""
+        if not rc_name:
+            continue
+        previous = names.get(rc_name, {})
+        record = {
+            "session_id": entry["sessionId"],
+            "cwd": entry.get("cwd", ""),
+            "args": extra_args,
+            "updated": now,
+        }
+        raw_pane = entry.get("tmux") or ""
+        if "%" in raw_pane:
+            target = stable_target(raw_pane.rsplit("%", 1)[1])
+            if target:
+                record["tmux_target"] = target
+        elif previous.get("tmux_target"):
+            # Keep the last known placement rather than dropping it: a session
+            # that momentarily reports no pane is not a session that moved.
+            record["tmux_target"] = previous["tmux_target"]
+        if previous.get("session_id") != record["session_id"]:
+            changed.append((rc_name, previous.get("session_id"), record["session_id"]))
+        names[rc_name] = record
+
+    for rc_name, record in list(names.items()):
+        if now - record.get("updated", 0) > STALE_AFTER_SECONDS:
+            del names[rc_name]
+            changed.append((rc_name, record.get("session_id"), None))
+
+    save_state(state)
+
+    if not quiet:
+        for rc_name, before, after in changed:
+            if after is None:
+                print(f"pruned {rc_name} (stale)")
+            elif before is None:
+                print(f"bound  {rc_name} -> {after}")
+            else:
+                print(f"moved  {rc_name} -> {after} (was {before})")
+        print(f"{len(names)} name(s) tracked")
+    return 0
+
+
+def tmux(*args: str) -> subprocess.CompletedProcess:
+    """Run a tmux command against the server this setup actually uses.
+
+    profile.env puts the server on a private socket (TMUX_SOCKET), so a bare
+    `tmux` would look at the default socket and find nothing. Inside tmux the
+    socket is the first field of $TMUX; outside it, fall back to the configured
+    path.
+    """
+    sock = None
+    if os.environ.get("TMUX"):
+        sock = os.environ["TMUX"].split(",")[0]
+    elif os.environ.get("TMUX_SOCKET"):
+        sock = os.environ["TMUX_SOCKET"]
+    cmd = ["tmux"] + (["-S", sock] if sock else []) + list(args)
+    return subprocess.run(cmd, capture_output=True, text=True, check=False)
+
+
+def pane_children(target: str) -> str:
+    """The command lines of everything running directly in a pane.
+
+    Used instead of `#{pane_current_command}` because that field is ambiguous
+    here: an idle pane reports its login shell (zsh), and a pane running
+    claude-pane reports `bash` -- the wrapper, since it deliberately does not
+    exec. A whitelist of shell names cannot tell those apart, and would call a
+    successful launch a failure on any box whose login shell is bash.
+
+    Reading the pane's direct children answers both questions exactly: empty
+    means an idle prompt, and a match means the thing we asked for is running.
+    """
+    result = tmux("display-message", "-p", "-t", target, "#{pane_pid}")
+    if result.returncode != 0:
+        return ""
+    pane_pid = result.stdout.strip()
+    if not pane_pid:
+        return ""
+    found = []
+    for line in ps("-A", "-o", "ppid=,args=").splitlines():
+        parts = line.strip().split(None, 1)
+        if len(parts) == 2 and parts[0] == pane_pid:
+            found.append(parts[1])
+    return " ".join(found)
+
+
+def stable_target(pane_id: str) -> str | None:
+    """Turn a live pane id into coordinates that survive a server restart.
+
+    The registry records `session:@window_id.%pane_id`, and both of those ids
+    are reassigned when tmux restarts. Session name, window index and pane index
+    are what resurrect puts back, so those are what a restore can address.
+    """
+    result = tmux(
+        "display-message",
+        "-p",
+        "-t",
+        f"%{pane_id}",
+        "#{session_name}:#{window_index}.#{pane_index}",
+    )
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
+def cmd_restore(argv: list[str]) -> int:
+    """Relaunch the Claude sessions into the panes resurrect just restored.
+
+    Driven by sessions.json rather than by resurrect's save file, for two
+    reasons. The save file is rewritten every time the tmux-persist timer runs,
+    so a restore that failed would be papered over by the next save two minutes
+    later -- the record of what should have come back destroyed by the thing
+    meant to preserve it. And the save file never contained the Remote Control
+    name in the first place; sessions.json is where that lives.
+
+    This also exists instead of listing claude-pane in @resurrect-processes
+    because resurrect sends the command the instant it creates the pane, and a
+    zsh still sourcing its startup files swallows the line without a trace.
+    Observed working and not working from the same save file on 2026-08-23,
+    which is the worst kind of bug for something that only runs while nobody is
+    watching. So: wait for an idle prompt, send, then confirm it took.
+    """
+    quiet = "--quiet" in argv
+    names = load_state()["names"]
+    panes = [
+        (record["tmux_target"], f"claude-pane {rc_name} {record.get('args', '')}".strip())
+        for rc_name, record in sorted(names.items())
+        if record.get("tmux_target")
+    ]
+    if not panes:
+        if not quiet:
+            print("nothing to restore")
+        return 0
+
+    failures = 0
+    for target, command in panes:
+        # has-session would only prove the *session* exists; the pane index is
+        # the part a changed layout invalidates.
+        if tmux("display-message", "-p", "-t", target, "#{pane_id}").returncode != 0:
+            print(f"{target}: no such pane, skipping {command!r}", file=sys.stderr)
+            failures += 1
+            continue
+        children = pane_children(target)
+        if "claude-pane" in children:
+            if not quiet:
+                print(f"{target}: already running, leaving it alone")
+            continue
+
+        started = False
+        for attempt in range(1, 4):
+            # Wait for an idle prompt. A pane still sourcing zshrc accepts the
+            # keys and drops them on the floor.
+            deadline = time.time() + 15
+            while time.time() < deadline and pane_children(target).strip():
+                time.sleep(0.5)
+            time.sleep(1.0)
+
+            tmux("send-keys", "-t", target, command, "C-m")
+
+            deadline = time.time() + 20
+            while time.time() < deadline:
+                if "claude-pane" in pane_children(target):
+                    started = True
+                    break
+                time.sleep(0.5)
+            if started:
+                break
+            if not quiet:
+                print(f"{target}: attempt {attempt} did not take, retrying", file=sys.stderr)
+
+        if started:
+            if not quiet:
+                print(f"{target}: started {command}")
+        else:
+            print(f"{target}: {command!r} did not start after 3 tries", file=sys.stderr)
+            failures += 1
+
+    return 1 if failures else 0
+
+
+def cmd_list(_argv: list[str]) -> int:
+    names = load_state()["names"]
+    if not names:
+        print("no names tracked yet; start one with: claude-pane <name>")
+        return 0
+    width = max(len(n) for n in names)
+    for rc_name in sorted(names):
+        record = names[rc_name]
+        sid = record.get("session_id", "")
+        mark = " " if transcript_exists(sid) else " (transcript missing!)"
+        age = (int(time.time()) - record.get("updated", 0)) // 60
+        print(f"{rc_name:<{width}}  {sid}  {age}m ago{mark}  {record.get('cwd', '')}")
+    return 0
+
+
+def cmd_bind(argv: list[str]) -> int:
+    if len(argv) != 2:
+        print("usage: claude-panes bind <name> <session-uuid>", file=sys.stderr)
+        return 2
+    rc_name, session_id = argv
+    if not transcript_exists(session_id):
+        print(f"claude-panes: no transcript found for {session_id}", file=sys.stderr)
+        return 1
+    cwd = ""
+    for path in PROJECTS_DIR.glob(f"*/{session_id}.jsonl"):
+        with path.open() as fh:
+            for line in fh:
+                try:
+                    cwd = json.loads(line).get("cwd") or cwd
+                except ValueError:
+                    continue
+                if cwd:
+                    break
+        break
+    state = load_state()
+    state["names"][rc_name] = {
+        "session_id": session_id,
+        "cwd": cwd,
+        "updated": int(time.time()),
+    }
+    save_state(state)
+    print(f"bound {rc_name} -> {session_id}")
+    return 0
+
+
+def cmd_forget(argv: list[str]) -> int:
+    if len(argv) != 1:
+        print("usage: claude-panes forget <name>", file=sys.stderr)
+        return 2
+    state = load_state()
+    if state["names"].pop(argv[0], None) is None:
+        print(f"claude-panes: {argv[0]} is not tracked", file=sys.stderr)
+        return 1
+    save_state(state)
+    print(f"forgot {argv[0]}")
+    return 0
+
+
+COMMANDS = {
+    "sync": cmd_sync,
+    "restore": cmd_restore,
+    "list": cmd_list,
+    "bind": cmd_bind,
+    "forget": cmd_forget,
+}
+
+
+def main() -> int:
+    argv = sys.argv[1:]
+    if not argv or argv[0] in ("-h", "--help"):
+        print((__doc__ or "").strip())
+        return 0
+    handler = COMMANDS.get(argv[0])
+    if handler is None:
+        print(f"claude-panes: unknown command {argv[0]!r}", file=sys.stderr)
+        return 2
+    return handler(argv[1:])
+
+
+if __name__ == "__main__":
+    sys.exit(main())

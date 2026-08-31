@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# Start a Claude Code session under a stable Remote Control name, resuming
+# whatever conversation was last running under that name.
+#
+#   claude-pane running-lab-repo            # resume (or start) that conversation
+#   claude-pane training-conversation --model opus
+#
+# Why this wrapper exists at all:
+#
+#   * `claude` records the pane -> conversation mapping in
+#     <claude config>/sessions/<pid>.json, but that file is keyed by pid and
+#     reaped on exit, so a reboot takes it along with the sessions it describes.
+#   * The Remote Control name — the one the phone actually shows — is a
+#     *different* name from the session name `-n` sets. It lives server-side
+#     against a bridge session that is regenerated on every launch, and appears
+#     nowhere on disk. Verified 2026-08-23: `-n LOCAL --rc RC` puts LOCAL in the
+#     registry and shows RC on the phone.
+#
+# So the Remote Control name cannot be recovered after the fact; it has to be
+# declared. `claude-pane running-lab-repo` is a command line that still means
+# the same thing tomorrow: `claude-panes sync` keeps track of which conversation
+# is currently under that name, and this resumes it.
+#
+# Deliberately NOT `exec claude`: tmux-resurrect saves the shell's direct child
+# and replays it verbatim with send-keys. An exec would replace this stable line
+# with `claude --resume <id> --rc <name>`, freezing a session id that /clear
+# silently invalidates — and a stale id restores the wrong conversation. Staying
+# in the process tree keeps the saved argv declarative and lets the id be
+# resolved fresh at each launch.
+set -euo pipefail
+
+CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}"
+STATE_DIR="${XDG_STATE_HOME:-${HOME}/.local/state}/claude-panes"
+SESSIONS_JSON="${STATE_DIR}/sessions.json"
+BIND_DIR="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/claude-panes/binds"
+
+usage() {
+  sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//'
+  exit "${1:-0}"
+}
+
+case "${1:-}" in
+  "" | -h | --help) usage 0 ;;
+  -*)
+    echo "claude-pane: first argument must be a Remote Control name" >&2
+    usage 2
+    ;;
+esac
+
+RC_NAME="$1"
+shift
+
+# The binding is what lets `claude-panes sync` work out which conversation is
+# living under this name. It is keyed by *this script's* pid: claude runs as a
+# direct child, the registry file is named after that child, and the child ->
+# parent link is readable from the process table. That join is exact.
+#
+# Keying it by tmux pane id would have been the obvious choice and is wrong:
+# pane ids are per-server and both start at %0, so with a second tmux server
+# around (proactive-run and tmux-subtasks each start one) a conversation could
+# be filed under another pane's name. Pids do not collide, and a pid-keyed
+# binding works outside tmux as well.
+mkdir -p "${BIND_DIR}"
+{
+  printf '%s\n' "${RC_NAME}"
+  # Line two is any extra arguments, shell-quoted. They are replayed on restore
+  # so that a flag the session was started with -- `--permission-mode auto`, a
+  # `--model` -- is not quietly dropped by the first reboot, which would leave a
+  # session that looks restored but behaves differently.
+  [ "$#" -gt 0 ] && printf '%q ' "$@"
+  printf '\n'
+} > "${BIND_DIR}/${$}"
+
+# Resolve the conversation to resume. A recorded id whose transcript has since
+# been deleted is treated as no id at all rather than as an error: starting a
+# fresh conversation under the right name beats refusing to start.
+session_id=""
+if [ -f "${SESSIONS_JSON}" ]; then
+  session_id="$(python3 - "${SESSIONS_JSON}" "${RC_NAME}" << 'PY'
+import json, sys
+try:
+    with open(sys.argv[1]) as fh:
+        data = json.load(fh)
+except (OSError, ValueError):
+    sys.exit(0)
+entry = data.get("names", {}).get(sys.argv[2]) or {}
+print(entry.get("session_id") or "")
+PY
+  )"
+fi
+
+if [ -n "${session_id}" ]; then
+  # The transcript lives under a mangled cwd directory; glob rather than
+  # reconstruct the mangling, which differs between platforms.
+  if compgen -G "${CLAUDE_DIR}/projects/*/${session_id}.jsonl" > /dev/null; then
+    set -- --resume "${session_id}" "$@"
+  else
+    printf 'claude-pane: no transcript for %s; starting a new conversation as %s\n' \
+      "${session_id}" "${RC_NAME}" >&2
+  fi
+fi
+
+exec_args=(claude --rc "${RC_NAME}" "$@")
+printf 'claude-pane: %s\n' "${exec_args[*]}" >&2
+"${exec_args[@]}"

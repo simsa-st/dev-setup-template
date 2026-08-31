@@ -90,6 +90,8 @@ setup/
 | `clipboard-copy` | stdin → local clipboard from anywhere (pbcopy → lemonade → OSC 52) |
 | `lemonade-server`, `lemonade-tunnel`, `lemonade-relay` | the clipboard path |
 | `tmux-say <tmux-target> <text>` | say something to an agent in another window |
+| `claude-pane <name> [args]` | start/resume a Claude session under a stable Remote Control name |
+| `claude-panes sync\|restore\|list\|bind\|forget` | the name → conversation map behind it |
 | `resume-agent <delay> <tmux-target> [text]` | poke a waiting agent later |
 
 ## Clipboard
