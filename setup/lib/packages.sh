@@ -4,7 +4,7 @@
 
 # TODO(bootstrap): trim/extend to the packages this environment actually needs.
 BREW_PACKAGES=(
-  autossh direnv fzf git git-delta git-lfs go mosh ripgrep tmux uv zsh
+  autossh direnv fzf git git-delta git-lfs go jq mosh ripgrep tmux uv zsh
   font-meslo-lg-nerd-font
 )
 
@@ -43,5 +43,10 @@ step_packages() {
     install_release_binary delta \
       "https://github.com/dandavison/delta/releases/download/${DELTA_VERSION}/delta-${DELTA_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
       "delta-${DELTA_VERSION}-x86_64-unknown-linux-gnu/delta"
+    # A single static binary, and not optional: agents/claude/statusline.sh is
+    # jq from its first line, and without it every prompt renders an empty
+    # status line instead of an error.
+    install_release_binary jq \
+      "https://github.com/jqlang/jq/releases/download/jq-${JQ_VERSION}/jq-linux-amd64"
   fi
 }
