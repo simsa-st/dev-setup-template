@@ -79,6 +79,14 @@ step_tmux() {
   [ -d "${HOME}/.tmux/plugins/tpm" ] ||
     git clone --depth=1 https://github.com/tmux-plugins/tpm "${HOME}/.tmux/plugins/tpm"
   link "${DEV_SETUP_DIR}/config/tmux/tmux.conf" "${HOME}/.tmux.conf"
+
+  # Cloning tpm is not installing the plugins tmux.conf declares: TPM only
+  # fetches when told to, by `prefix + I` or by this script. Without this line
+  # ~/.tmux/plugins holds tpm and nothing else, every `set -g @plugin` line is
+  # inert, and the gap is invisible until the day the plugin was supposed to do
+  # something — for tmux-resurrect, the reboot it was declared for.
+  "${HOME}/.tmux/plugins/tpm/bin/install_plugins" > /dev/null ||
+    warn "tmux: TPM could not install plugins; run prefix + I inside tmux"
 }
 
 step_git() {
