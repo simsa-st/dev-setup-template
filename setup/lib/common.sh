@@ -157,11 +157,16 @@ if start != -1 and stop != -1 and stop > start:
     rest = text[stop + len(end):].lstrip("\n")
     path.write_text(text[:start] + block + (f"\n{rest}" if rest else ""))
 elif where == "top":
-    path.write_text(block + "\n" + text.lstrip("\n"))
+    rest = text.lstrip("\n")
+    path.write_text(block + (f"\n{rest}" if rest else ""))
 else:
+    # The blank line is a *separator*, so an empty file gets none. Emitting one
+    # anyway left every file this function creates starting with a blank line,
+    # which is merely ugly until something else normalises the file -- and then
+    # the run after that is a diff, which is the idempotence claim again.
     if text and not text.endswith("\n"):
         text += "\n"
-    path.write_text(f"{text}\n{block}")
+    path.write_text(f"{text}\n{block}" if text else block)
 BLOCK_PY
 }
 
