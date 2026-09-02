@@ -33,16 +33,23 @@ sharing their contents. Nothing employer-specific ever enters the personal one;
 nothing personal ever enters a work one; and a fix made in either can be carried
 across deliberately, as a change you reviewed rather than a merge.
 
-Two setups on **one machine** is the case worth planning for, because it is
-where naive dotfile repos break: both want to own `~/.zshrc`, `~/.tmux.conf`,
-`~/.config/nvim`, and installing one clobbers the other. The template does not
-ship a solution — it has a single mode, and the machine it installs is its own.
-The pattern that works is to give one of the two a **layered mode** that writes
-only paths the other never touches (`~/.claude-personal` beside `~/.claude`, a
-managed block appended to `~/.zshrc` rather than a rewrite of it), so the two
-installs become order-independent and both stay re-runnable. Add it to the
-instantiation that has to yield, and keep it as an explicit mode rather than
-something guessed from what happens to be installed.
+Two setups on **one machine** is the case this is really built for, because it
+is where naive dotfile repos break: both want to own `~/.zshrc`, `~/.tmux.conf`,
+`~/.config/nvim` and the agent config dirs, and whichever installs last wins.
+`install.sh` has two modes. In **full** mode it owns the machine. In **layer**
+mode it installs beside another setup — `~/.config/nvim-<suffix>`,
+`~/.claude-<suffix>`, a managed block *appended* to `~/.zshrc`, a fragment in
+`~/.ssh/config.d/` — and writes no path the other setup owns, so the two
+installs are order-independent and either can be re-run at any time.
+
+What makes that usable rather than merely non-destructive is
+`${LAYER_ROOT}/.envrc`: entering this setup's tree points neovim and the coding
+agents at its own configs, and leaving it restores the other setup's defaults.
+Both keep their own agent logins and editor config, and neither is reconfigured
+to accommodate the other. The mode is declared with `--mode` and remembered per
+machine — never guessed from what happens to be installed, because a first run
+on a half-set-up machine is exactly when guessing is least reliable and most
+destructive.
 
 **Config is symlinked, not copied.** `~/.claude`, `~/.pi`, `~/.tmux.conf`,
 `~/.config/*` point into the repo, so editing a config *is* editing the repo,
