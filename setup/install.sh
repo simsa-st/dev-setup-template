@@ -116,10 +116,14 @@ STEPS=(
   ssh
   finish
 )
-# nvim, agents, env and ssh run in both modes: each one installs to its layer
-# path always, and additionally to the canonical path in full mode. The rest are
-# the base of a machine, which in layer mode belongs to somebody else.
-FULL_ONLY_STEPS="packages,shell,tmux,git,tools,sessions,clipboard"
+# nvim, agents, env, git and ssh run in both modes: each one installs to its
+# layer path always, and additionally to the canonical path in full mode. The
+# rest are the base of a machine, which in layer mode belongs to somebody else.
+#
+# git is in that list rather than full-only because a commit made from this
+# setup's tree has to carry this setup's identity even when the base setup owns
+# ~/.config/git/config; step_git writes an includeIf for the tree instead.
+FULL_ONLY_STEPS="packages,shell,tmux,tools,sessions,clipboard"
 
 if [ "${LIST_ONLY}" = "yes" ]; then
   for step in "${STEPS[@]}"; do

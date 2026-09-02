@@ -172,8 +172,11 @@ Then verify, and fix what fails rather than noting it:
 
 - [ ] `./setup/install.sh` a second time changes nothing (idempotence — the
       single most important property).
-- [ ] `~/.zshrc` contains exactly one `DEVSETUP_ZSHRC_HEADER` block.
-- [ ] `git config --get user.email` is right; `git diff` is delta-formatted.
+- [ ] `~/.zshrc` contains exactly one `<MANAGED_BLOCK_PREFIX>_ZSHRC_HEADER`
+      block (full mode) or `<MANAGED_BLOCK_PREFIX>_SHELL` block (layer mode).
+- [ ] `git config --get user.email` is right *inside `LAYER_ROOT`*, which in
+      layer mode is the only place this setup sets it; `git diff` is
+      delta-formatted wherever delta is installed.
 - [ ] `conn --tmux <alias>` connects, attaches tmux, and survives a disconnect.
 - [ ] Copying in remote tmux copy-mode lands in the local clipboard — over mosh
       too, not just ssh.

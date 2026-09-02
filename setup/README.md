@@ -27,15 +27,19 @@ layer beside it, and touches nothing the other setup writes:
 | `~/.claude`, `~/.pi` | `~/.claude-<suffix>`, `~/.pi-<suffix>` |
 | `~/.zshrc` header block (top) | `~/.zshrc` layer block (appended) |
 | `~/.ssh/config` | `~/.ssh/config.d/<suffix>-hosts` |
-| the packages, zsh, tmux and git config themselves | nothing — they are the other setup's |
+| `~/.config/git/config` | `~/.gitconfig` includeIf → `~/.config/git/config-<suffix>` |
+| the packages, zsh and tmux config themselves | nothing — they are the other setup's |
 
 `<suffix>` is `LAYER_SUFFIX` from `profile.env`, and `MANAGED_BLOCK_PREFIX`
 namespaces the blocks. Two instantiations sharing a machine **must** differ in
 both, or each install silently overwrites the other's work.
 
 The switch between them is `${LAYER_ROOT}/.envrc`: entering this setup's tree
-exports `NVIM_APPNAME`, `CLAUDE_CONFIG_DIR` and `PI_CODING_AGENT_DIR` for the
-layer, and leaving it restores the other setup's defaults. That is what lets
+exports `NVIM_APPNAME`, `CLAUDE_CONFIG_DIR`, `PI_CODING_AGENT_DIR` and
+`DEV_HOSTS_FILE` for the layer, and leaving it restores the other setup's
+defaults. Git identity is scoped to the same tree, but by `includeIf` rather
+than by the environment, because git is also invoked by things that never see a
+direnv-exported variable. That is what lets
 both setups keep their own agent logins and editor config without either being
 reconfigured; `shell/bashrc-layer` carries the aliases that reach the same tools
 from outside the tree.
@@ -52,7 +56,7 @@ Steps run in this order, each one a `step_<name>` function in `lib/`:
 | `packages` | full | Homebrew formulae (macOS) or user-local release binaries (Linux) |
 | `shell` | full | oh-my-zsh + p10k, `~/.config` symlinks, managed `~/.zshrc` header |
 | `tmux` | full | tpm + `tmux.conf` symlink |
-| `git` | full | render `~/.config/git/config` from the profile |
+| `git` | both | full: render `~/.config/git/config`; layer: an `includeIf` in `~/.gitconfig` giving `${LAYER_ROOT}` this identity |
 | `tools` | full | uv, node/nvm, repo pre-commit hook |
 | `nvim` | both | clone/symlink the config repo; full mode also installs neovim |
 | `agents` | both | symlink agent config; full mode also installs the binaries |
@@ -103,8 +107,12 @@ start corrupting dotfiles.
    Moving the checkout re-points symlinks; it does not edit `$HOME`.
 8. **Back up before replacing.** Anything real that a symlink would overwrite is
    moved to `~/dev-setup-backups/<timestamp>/` (`link`, `backup_path`).
-9. **No root on Linux.** Shared machines are installed user-locally into
-   `~/.config/bin`. If a step needs `sudo`, it belongs on macOS only.
+9. **Never require root on Linux.** The difference that matters is not the
+   distro but whether you own the box: a shared machine has no sudo, and
+   everything has to land user-locally in `~/.config/bin`. A step may *use*
+   passwordless sudo when it is there — that is how a machine you own gets its
+   apt packages — but it must detect that (`sudo -n true`), never prompt, and
+   degrade to a warning rather than a failure when it is absent.
 10. **Layered configuration.** `config/profile.env` (committed, same everywhere)
    → `config/machine.local.env` (gitignored, per machine) → `config/secrets/env`
    (gitignored, never committed).
