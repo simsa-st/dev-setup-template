@@ -9,6 +9,55 @@ below; when you are done, none should remain.
 grep -rn "TODO(bootstrap)\|TODO " --exclude-dir=.git .
 ```
 
+## Day zero: what has to exist before the repo does
+
+A brand-new machine has a bootstrap paradox: several of the things that make
+cloning this repo work are configured *by* this repo. None of it can move into
+`install.sh`, so it is worth stating once rather than rediscovering per machine.
+
+**macOS: Homebrew, and its PATH lines.** `setup/lib/packages.sh` refuses to run
+without it. On Apple Silicon it installs to `/opt/homebrew`, which is *not* on
+the default `PATH`, so the "next steps" Homebrew prints when it finishes are
+load-bearing rather than advisory:
+
+```bash
+echo >> ~/.zprofile
+echo 'eval "$(/opt/homebrew/bin/brew shellenv zsh)"' >> ~/.zprofile
+eval "$(/opt/homebrew/bin/brew shellenv zsh)"
+```
+
+**An ssh key the remote already trusts** — and if its filename is not one ssh
+tries by default (`id_ed25519`, `id_rsa`, ...), the very first clone has to name
+it, because the `IdentityFile` line that makes this unnecessary is generated
+from `hosts.toml` by the `ssh` step and therefore arrives *with* the repo being
+cloned:
+
+```bash
+GIT_SSH_COMMAND='ssh -i ~/.ssh/<key>' git clone <remote> ~/code/<repo>
+```
+
+Worth recognising the failure: a bare `Permission denied (publickey)` for a key
+that works perfectly under `ssh -i`, with the server side saying only
+`Connection closed by authenticating user <you> ... [preauth]` — the client
+never offered anything usable.
+
+**Generate that key on the new machine; do not carry the old one over.** A key
+that lived on a machine you no longer control should be treated as burned, and
+rotation is only cheap if it happens at the moment a machine changes. The
+awkward part is normally the chicken-and-egg — installing the new public key
+usually requires authenticating with the old one, which means restoring the old
+private key onto the new machine first, the one place it should never be. Any
+identity-based route to the remote breaks that cycle: a mesh VPN with
+identity-based SSH (Tailscale SSH and equivalents) authorises on account rather
+than key material, so the new public key can be appended over it and the old
+private key never exists on the new machine at all.
+
+**Verify the new key against the route that actually uses it.** If the remote is
+reachable both directly and over such a VPN, only the direct one consults
+`authorized_keys`; the VPN path succeeds whether or not the key works. The
+server's own auth log, which names the accepted fingerprint, is the check that
+cannot lie to you.
+
 ## 0. Copy and rename
 
 ```bash
