@@ -48,8 +48,19 @@ step_shell() {
   # one place it belongs: the login shell is a property of the account, so a
   # layer must never change it.
   if [ "$(basename "${SHELL:-}")" != "zsh" ]; then
-    chsh -s "$(command -v zsh)" 2> /dev/null ||
-      warn "could not change the login shell to zsh; run: chsh -s $(command -v zsh)"
+    local zsh_path
+    zsh_path="$(command -v zsh)"
+    # chsh prompts for a password, so it cannot work over a non-interactive
+    # session -- which is how a remote box gets set up. Where we have
+    # passwordless sudo we can do it anyway; where we do not, say so precisely
+    # rather than failing silently.
+    grep -qxF "${zsh_path}" /etc/shells 2> /dev/null ||
+      { [ -w /etc/shells ] && printf '%s\n' "${zsh_path}" >> /etc/shells; } ||
+      sudo -n sh -c "printf '%s\n' '${zsh_path}' >> /etc/shells" 2> /dev/null || true
+    if ! chsh -s "${zsh_path}" 2> /dev/null &&
+      ! sudo -n chsh -s "${zsh_path}" "${USER:-$(id -un)}" 2> /dev/null; then
+      warn "could not change the login shell; run: chsh -s ${zsh_path}"
+    fi
   fi
 }
 
