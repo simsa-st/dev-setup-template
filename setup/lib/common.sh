@@ -94,6 +94,29 @@ sys.exit(0 if parts(sys.argv[1]) >= parts(sys.argv[2]) else 1)
 PY
 }
 
+# Converge a git checkout this repo owns but does not track: the oh-my-zsh
+# plugins and the neovim config repo.
+#
+# The symlink case is not hypothetical. Two instantiations sharing a machine
+# reach this with the *same* destination path, and the loser gets a symlink
+# into the winner's checkout -- at which point `git -C <dir> pull` would
+# fast-forward the other install's repository from this install's remote. So a
+# symlink here is dropped and re-cloned rather than followed.
+#
+# A failed pull warns rather than passing silently: a checkout stuck on an old
+# commit because it has local changes is exactly the drift this function exists
+# to remove, and nothing else reports it.
+clone_or_pull() { # <url> <dir>
+  if [ -L "$2" ]; then
+    rm -f "$2"
+  fi
+  if [ -d "$2/.git" ]; then
+    git -C "$2" pull --quiet --ff-only || warn "could not fast-forward $2; leaving it as is"
+  else
+    git clone --depth=1 "$1" "$2"
+  fi
+}
+
 # Rewrite a `# BEGIN/END <prefix>_<name>` block in a file, creating it if absent.
 # This is what keeps re-runs idempotent instead of appending a second copy.
 #
@@ -279,11 +302,25 @@ step_preflight() {
   have curl || die "curl is required; install it first."
   have python3 || die "python3 is required; install it first."
   mkdir -p "${XDG_CONFIG_HOME}/bin"
-  chmod 700 "${DEV_SETUP_DIR}/config/secrets" 2> /dev/null || true
+
+  # Git records only the executable bit, so a fresh clone -- or a file written
+  # under a loose umask -- leaves secrets/env group- and world-readable. The
+  # modes are re-enforced on every run rather than at creation time, because the
+  # file that matters is usually the one somebody added by hand afterwards.
+  local secrets="${DEV_SETUP_DIR}/config/secrets"
+  mkdir -p "${secrets}"
+  chmod 700 "${secrets}"
+  find "${secrets}" -type f ! -name '*.md' ! -name '*.example' -exec chmod 600 {} +
 }
 
 step_finish() {
   printf '\n\033[1;32mDone.\033[0m Run:\n  source ~/.zshrc\n'
   have nvm && printf '  nvm use default\n'
-  printf 'Backups (if any) are in %s\n' "${BACKUP_DIR}"
+  if [ "${DEVSETUP_MODE}" = "layer" ] && [ -n "${LAYER_ROOT:-}" ]; then
+    printf 'This layer activates inside %s via direnv.\n' "${LAYER_ROOT}"
+  fi
+  # Guarded: the message named a directory that does not exist on every run that
+  # replaced nothing, which is most of them.
+  [ -d "${BACKUP_DIR}" ] && printf 'Backups are in %s\n' "${BACKUP_DIR}"
+  return 0
 }

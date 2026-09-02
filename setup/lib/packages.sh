@@ -26,6 +26,11 @@ install_release_binary() { # <name> <url> [<path-inside-archive>]
     case "${url}" in
       *.tar.gz | *.tgz) tar -xzf archive ;;
       *.zip) unzip -q archive ;;
+      # A bare compressed binary, which is how restic and friends ship. Without
+      # this it falls to the catch-all below and a bz2 stream is installed as
+      # the executable -- which fails as "cannot execute binary file" at the
+      # point of use rather than here.
+      *.bz2) bzip2 -dc archive > "${name}"; chmod +x "${name}" ;;
       *) mv archive "${name}"; chmod +x "${name}" ;;
     esac
     mv "${inner:-${name}}" "${dest}"
