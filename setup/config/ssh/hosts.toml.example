@@ -11,6 +11,11 @@ user = "TODO-remote-username"
 # port = 22
 user_id = 1  # your slot on shared machines; feeds the remote-port formula
 slots = 4    # how many concurrent instances of each service to forward
+# identity_file = "~/.ssh/id_ed25519_work"
+#   Only needed when the key's filename is not one ssh tries by default.
+#   Without it, git and anything else invoking plain ssh never offers the key
+#   and fails with "Permission denied (publickey)" -- for a key that works fine
+#   under `ssh -i`. Can also be set per-machine below.
 
 # service -> port prefix; remote = prefix*1000 + user_id*10 + slot
 [services]
