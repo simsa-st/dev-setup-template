@@ -40,6 +40,26 @@ link() { # <source> <destination>
   ln -sfn "${src}" "${dst}"
 }
 
+# setup/config/bin/hosts parses hosts.toml with tomllib, which is 3.11+. macOS
+# ships 3.9, and Homebrew's python@3.x links only the versioned name, so a
+# fresh Mac has no usable `python3` however many pythons are installed. `conn`
+# calls that script at runtime, not just the installer, so the fix has to
+# outlive the install: a symlink in ~/.config/bin, which bashrc-extra puts
+# first on PATH. No-op wherever python3 is already new enough.
+ensure_modern_python3() {
+  python3 -c 'import tomllib' 2> /dev/null && return 0
+  local candidate
+  for candidate in python3.14 python3.13 python3.12 python3.11; do
+    if have "${candidate}" && "${candidate}" -c 'import tomllib' 2> /dev/null; then
+      log "linking ${candidate} as ${XDG_CONFIG_HOME}/bin/python3 (system python3 lacks tomllib)"
+      link "$(command -v "${candidate}")" "${XDG_CONFIG_HOME}/bin/python3"
+      hash -r
+      return 0
+    fi
+  done
+  warn "no python3 with tomllib (3.11+); setup/config/bin/hosts and conn cannot run."
+}
+
 version_ge() { # <have> <want>
   python3 - "$1" "$2" <<'PY'
 import re, sys
@@ -74,11 +94,19 @@ if content and not content.endswith("\n"):
     content += "\n"
 block = f"{begin}\n{content}{end}\n"
 
+# The file's directory may not exist yet (~/.aws on a fresh box), and touch()
+# raises rather than creating it. link() already does this; this did not.
+path.parent.mkdir(parents=True, exist_ok=True)
 path.touch()
 text = path.read_text()
 start, stop = text.find(begin), text.find(end)
 if start != -1 and stop != -1 and stop > start:
-    path.write_text(text[:start] + block + text[stop + len(end):].lstrip("\n"))
+    # Re-separate from whatever follows with exactly one blank line, matching
+    # what the insert path below writes. Without this the replace path strips a
+    # separator the insert path added, so the *second* run of the installer
+    # still changes the file -- which is precisely the idempotence claim.
+    rest = text[stop + len(end):].lstrip("\n")
+    path.write_text(text[:start] + block + (f"\n{rest}" if rest else ""))
 elif where == "top":
     path.write_text(block + "\n" + text.lstrip("\n"))
 else:
@@ -186,6 +214,13 @@ ensure_ssh_config_include() {
 # Values that differ per person (identity, nvim config repo, ports) live in
 # config/profile.env, committed once the template is instantiated. Per-machine
 # overrides live in config/machine.local.env, which is gitignored.
+#
+# The LAYER_* values below are consumed by lib/{agents,shell,tools}.sh and are
+# exported anyway by the enclosing `set -a`. shellcheck models neither the
+# sourcing boundary nor allexport, so it flags all five as unused; the directive
+# is function-scoped rather than per-line because a bare one covers only the
+# next command.
+# shellcheck disable=SC2034
 load_profile() {
   local profile="${DEV_SETUP_DIR}/config/profile.env"
   [ -f "${profile}" ] || die "Missing ${profile} — copy profile.env.example and fill it in (see BOOTSTRAP.md)."
@@ -209,8 +244,13 @@ load_profile() {
 
 step_preflight() {
   load_profile
-  have zsh || die "zsh is required; install it first."
+  # Only things this installer cannot install for you. zsh is deliberately NOT
+  # here: it is a *target*, installed by step_packages, and preflight runs
+  # first -- so requiring it here makes a fresh Linux box impossible to set up,
+  # dying before the step that would have fixed it. step_shell checks it, which
+  # is both after packages and the place that actually needs it.
   have git || die "git is required; install it first."
+  have curl || die "curl is required; install it first."
   have python3 || die "python3 is required; install it first."
   mkdir -p "${XDG_CONFIG_HOME}/bin"
   chmod 700 "${DEV_SETUP_DIR}/config/secrets" 2> /dev/null || true

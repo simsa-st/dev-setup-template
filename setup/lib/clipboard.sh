@@ -28,6 +28,7 @@ step_clipboard() {
 # the fragments are named by LAYER_SUFFIX -- a second instantiation gets its own
 # file rather than overwriting this one.
 step_ssh() {
+  ensure_modern_python3
   local hosts="${DEV_SETUP_DIR}/config/ssh/hosts.toml"
   if [ ! -f "${hosts}" ]; then
     warn "no ${hosts}; skipping SSH config generation (see BOOTSTRAP.md)."

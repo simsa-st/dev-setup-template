@@ -24,8 +24,16 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-import tomllib
 from pathlib import Path
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # tomllib landed in 3.11; macOS still ships 3.9.
+    sys.exit(
+        f"{sys.executable} is {sys.version_info.major}.{sys.version_info.minor}; "
+        "this needs 3.11+ for tomllib. Run setup/install.sh --only packages, "
+        "or put a newer python3 first on PATH."
+    )
 
 
 def hosts_file() -> Path:
