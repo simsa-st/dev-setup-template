@@ -60,6 +60,32 @@ ensure_modern_python3() {
   warn "no python3 with tomllib (3.11+); setup/config/bin/hosts and conn cannot run."
 }
 
+# Set `<key><sep><value>` in a config file, converging rather than appending.
+# Most "add this line to your ~/.npmrc" instructions use `>>`, which duplicates
+# the line on every run; a setup step has to be safe to re-run, so this rewrites
+# an existing key in place and only appends when the key is genuinely absent.
+# Never rewrites the rest of the file -- ~/.npmrc can hold registry auth.
+ensure_config_line() { # <file> <key> <sep> <value> [<header>]
+  python3 - "$1" "$2" "$3" "$4" "${5:-}" <<'CFG_PY'
+from pathlib import Path
+import re, sys
+
+path, key, sep, value, header = (Path(sys.argv[1]), *sys.argv[2:6])
+path.parent.mkdir(parents=True, exist_ok=True)
+text = path.read_text() if path.exists() else ""
+line = f"{key}{sep}{value}"
+pattern = re.compile(rf"^\s*{re.escape(key)}\s*{re.escape(sep.strip())}\s*.*$", re.M)
+if pattern.search(text):
+    new = pattern.sub(line, text, count=1)
+else:
+    if header and header not in text:
+        text = (text.rstrip("\n") + "\n" if text else "") + header + "\n"
+    new = (text.rstrip("\n") + "\n" if text else "") + line + "\n"
+if new != text:
+    path.write_text(new)
+CFG_PY
+}
+
 version_ge() { # <have> <want>
   python3 - "$1" "$2" <<'PY'
 import re, sys

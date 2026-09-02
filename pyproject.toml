@@ -27,4 +27,11 @@ ignore = ["E402", "E701", "E702", "F401"]
 [tool.ty.src]
 # Root ty checks shared/root code only; experiments are checked in their own
 # environments by scripts/check_affected_experiments_ty.sh.
-exclude = ["experiments/"]
+#
+# setup/agents/ is excluded because ~/.claude and ~/.pi ARE those directories:
+# the agents write plugins, projects and caches into them at runtime, and the
+# agents step additionally adopts an existing ~/.claude into the repo. None of
+# it is tracked (see setup/agents/*/.gitignore), but a type checker walks the
+# working tree rather than the index and does not read .gitignore, so without
+# this it checks other people's plugin code -- 138 errors on one real install.
+exclude = ["experiments/", "setup/agents/"]

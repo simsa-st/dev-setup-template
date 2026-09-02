@@ -61,9 +61,15 @@ cannot lie to you.
 ## 0. Copy and rename
 
 ```bash
-cp -r dev-setup-template ~/code/<repo-name> && cd ~/code/<repo-name>
+cp -a dev-setup-template ~/code/<repo-name> && cd ~/code/<repo-name>
 rm -rf .git && git init && git add -A && git commit -m "chore: start from dev-setup-template"
 ```
+
+`cp -a`, not `cp -r`: the skills under `setup/agents/` are symlinks into
+`setup/agents/skills/`, and `cp -r` **dereferences them**, silently turning one
+skill into three independent copies that then drift. Check with
+`git ls-files -s setup/agents/claude/skills/` — every entry should be mode
+`120000`, not `100644`.
 
 Then set the repo name in `pyproject.toml` and rewrite `README.md` for the real
 repo — it should describe *this* environment, not the template.

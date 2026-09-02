@@ -98,7 +98,7 @@ then filled in for one concrete environment.
 
 ```bash
 git clone <this repo> ~/code/dev-setup-template     # keep it; you will port to it
-cp -r dev-setup-template ~/code/dev-setup-<context> # e.g. -personal, -<employer>
+cp -a dev-setup-template ~/code/dev-setup-<context> # -a, not -r: skills are symlinks
 cd ~/code/dev-setup-<context>
 rm -rf .git && git init && git add -A && git commit -m "chore: start from dev-setup-template"
 ```
