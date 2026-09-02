@@ -52,13 +52,20 @@ step_ssh() {
     ensure_ssh_config_include
   fi
 
-  local generated="${d}/generated-port-forwards"
+  # Suffixed like the hosts fragment, and for the same reason: two
+  # instantiations sharing a machine both reach this code (step_ssh runs in
+  # BOTH modes), and unsuffixed names meant each install silently overwrote the
+  # other's forwards — the one collision the config.d design was supposed to
+  # prevent. The unsuffixed leftovers from before are removed.
+  rm -f "${d}/generated-port-forwards" "${d}/custom-forwards"
+
+  local generated="${d}/${LAYER_SUFFIX}-generated-port-forwards"
   "${DEV_SETUP_DIR}/config/bin/hosts" ssh-config --forwards > "${generated}"
   chmod 600 "${generated}"
 
   local custom="${DEV_SETUP_DIR}/config/ssh/custom-forwards"
   if [ -f "${custom}" ]; then
-    cp "${custom}" "${d}/custom-forwards"
-    chmod 600 "${d}/custom-forwards"
+    cp "${custom}" "${d}/${LAYER_SUFFIX}-custom-forwards"
+    chmod 600 "${d}/${LAYER_SUFFIX}-custom-forwards"
   fi
 }

@@ -59,7 +59,15 @@ step_nvim() {
     return 0
   fi
 
-  local src="${XDG_CONFIG_HOME}/nvim-config"
+  # Suffixed: two instantiations on one machine have different
+  # NVIM_CONFIG_REPOs, and an unsuffixed clone dir made them fight over one
+  # checkout — whichever installed last won, and the other's editor silently
+  # got the wrong config. Migrate an existing unsuffixed clone rather than
+  # re-cloning it.
+  local src="${XDG_CONFIG_HOME}/nvim-config-${LAYER_SUFFIX}"
+  if [ -d "${XDG_CONFIG_HOME}/nvim-config" ] && [ ! -e "${src}" ]; then
+    mv "${XDG_CONFIG_HOME}/nvim-config" "${src}"
+  fi
   clone_or_pull "${NVIM_CONFIG_REPO}" "${src}"
   link "${src}" "${LAYER_NVIM_DIR}"
 
