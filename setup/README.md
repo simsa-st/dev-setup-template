@@ -41,6 +41,13 @@ start corrupting dotfiles.
    against the value the step wants and rewrite when they differ. A
    presence-only check on a credentials file is how a rotated token keeps
    failing on every machine that already had the old one.
+
+   This applies just as much to state held *outside* the machine — an ssh key
+   or a firewall rule stored in a cloud provider's account, addressed by name.
+   Existence-by-name is especially tempting there because the API makes it a
+   one-liner, and especially dangerous because nothing local shows the drift:
+   an entry a step created once and never checked again will happily hand a
+   rebuilt machine a credential that was deliberately retired.
 3. **Refuse the wrong environment before doing anything.** Validate the target
    and the arguments at the very top of an entry point, above any step that
    relocates, clones or writes — a guard below such a step cannot undo what it
@@ -54,6 +61,12 @@ start corrupting dotfiles.
 7. **Layered configuration.** `config/profile.env` (committed, same everywhere)
    → `config/machine.local.env` (gitignored, per machine) → `config/secrets/env`
    (gitignored, never committed).
+8. **Install files, not session state.** A step that mutates something living in
+   the current login — an ssh-agent, a running daemon's in-memory config, an
+   exported variable — has nothing to converge on and no effect that survives a
+   logout, and it usually wants to prompt. `ssh-add --apple-use-keychain` is the
+   recurring example; the config file equivalents (`AddKeysToAgent`,
+   `UseKeychain`) belong in the repo, the `ssh-add` does not.
 
 ## Layout
 
