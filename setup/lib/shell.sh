@@ -141,8 +141,10 @@ EOF
 # the tools' defaults globally -- which is the base setup's business -- or be
 # reachable only through aliases.
 #
-# direnv is what applies it; it is in the package list, and an .envrc has to be
-# `direnv allow`ed once per machine.
+# direnv is what applies it; it is in the package list, an .envrc has to be
+# `direnv allow`ed once per machine, and the shell hook that makes direnv run at
+# all is installed by config/shell/bashrc-layer -- nothing else on the machine
+# can be relied on to have one.
 write_layer_envrc() {
   [ -n "${LAYER_ROOT:-}" ] || return 0
   local envrc="${LAYER_ROOT}/.envrc"

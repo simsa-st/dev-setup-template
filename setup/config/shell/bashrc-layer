@@ -35,6 +35,27 @@ set -a
 [ -f "${DEV_SETUP_LAYER_DIR}/config/secrets/env" ] && . "${DEV_SETUP_LAYER_DIR}/config/secrets/env"
 set +a
 
+# --- direnv: the switch into this layer's profile -------------------------
+# ${LAYER_ROOT}/.envrc is what repoints the editor and the agents at this
+# setup's configs. direnv applies it, but only once its shell hook is
+# installed -- and nothing installs one: this setup's installer only
+# `direnv allow`s the file, and the base setup underneath (in layer mode,
+# someone else's) is entitled to assume nothing about direnv at all. Without
+# the hook the .envrc is inert, `cd ${LAYER_ROOT}` does nothing, and the tools
+# keep starting the base setup's config.
+#
+# Here rather than in bashrc-extra because this file is linked and sourced in
+# *both* modes, while bashrc-extra is only this setup's in full mode. Safe to
+# eval non-interactively and repeatedly: it only prepends to
+# precmd_functions / PROMPT_COMMAND, and direnv guards against doing that twice.
+if command -v direnv > /dev/null 2>&1; then
+  if [ -n "${ZSH_VERSION:-}" ]; then
+    eval "$(direnv hook zsh)"
+  elif [ -n "${BASH_VERSION:-}" ]; then
+    eval "$(direnv hook bash)"
+  fi
+fi
+
 # --- this layer's tooling, reachable from anywhere ------------------------
 # The .envrc switches these inside ${LAYER_ROOT}; these aliases are how you
 # reach the same tools from outside it, without changing anyone's defaults.
