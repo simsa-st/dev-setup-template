@@ -130,7 +130,7 @@ setup/
 │   └── clipboard.sh        lemonade + ssh config
 ├── config/
 │   ├── profile.env(.example)   identity, pinned versions, ports
-│   ├── shell/                  bashrc-extra (env, PATH, aliases), zshrc-base.zsh
+│   ├── shell/                  bashrc-extra (full mode), bashrc-layer (layer)
 │   ├── tmux/tmux.conf
 │   ├── git/config.template
 │   ├── ssh/hosts.toml(.example), custom-forwards
@@ -140,8 +140,8 @@ setup/
 └── agents/
     ├── skills/             shared skills, symlinked into both agents
     ├── prompts/            shared prompts / slash commands
-    ├── claude/             becomes ~/.claude
-    └── pi/                 becomes ~/.pi
+    ├── claude/             becomes ~/.claude-<suffix> (and ~/.claude in full mode)
+    └── pi/                 becomes ~/.pi-<suffix> (and ~/.pi in full mode)
 ```
 
 ## Helper scripts (`config/bin`, on `PATH`)
@@ -199,6 +199,71 @@ Three things about this were found the hard way and are worth not rediscovering:
   the instant it creates the pane, and a zsh still sourcing its startup files
   swallows the line without a trace. `claude-panes restore` waits for an idle
   prompt, sends, and confirms the process is up.
+
+## An always-on box
+
+Sooner or later one of the machines this repo installs is a server rather than a
+laptop — a VPS, a cloud dev box — and it grows services nothing else needs: a
+sync daemon, a mesh VPN, a backup timer, a reverse proxy. Put those in their own
+`lib/box.sh` with a full-mode-only step, so the laptops never evaluate them, and
+keep the rules below. Each one is cheap to follow and was expensive to learn.
+
+**User units, not system units.** `~/.config/systemd/user` sits inside the home
+directory a backup already copies, so a rebuilt box gets its services back with
+its files. `/etc/systemd/system` would not be in that backup, and nothing would
+tell you until the rebuild.
+
+**Lingering is the point.** Nobody stays logged in to a server, and without
+`loginctl enable-linger` a user unit lives exactly as long as one ssh session —
+so the timer works perfectly while you watch it and stops the moment you leave.
+
+**Unit files are copied, never symlinked.** `systemctl reenable` is
+disable-then-enable, and `disable` *deletes* a unit file that is a symlink: it
+reads it as a `systemctl link` and unlinks it. A step that symlinks its units
+removes the unit it just installed and then fails on it. (`lib/sessions.sh`
+already does this correctly — copy its shape.)
+
+**Quote every `Environment=` value.** systemd splits that line on whitespace, so
+a value containing a space is accepted and then silently dropped with `Invalid
+environment assignment, ignoring: <second word>`. A commit identity is the
+usual victim, and the unit runs on with an empty variable.
+
+**A unit that points into `~/.config/bin` depends on a step that can be
+skipped.** `--only <that step>` on a fresh machine installs the unit without the
+script it executes; systemd reports `203/EXEC` and launchd reports nothing at
+all. Link the script from the step that installs the unit as well, not only from
+the step that owns `config/bin`.
+
+**Install the daemon; leave the join to a human.** For anything that
+authenticates against an account — a VPN, a sync mesh — the step should stop at
+"running and configured". Joining is per-device state, and automating it means
+storing a long-lived credential on the box to save one command. Where that state
+lives also decides what a rebuild costs: inside the home directory it comes back
+with the backup, outside it (`/var/lib/...`) it must be re-authenticated
+regardless, which is the honest reason to leave it manual.
+
+**Converge on the contents of a package sources list, not on the file
+existing.** The first version of one such check looked for the distro codename
+as `/noble` where the line actually reads `... /ubuntu noble main`, so it
+re-added the repository on every single run. A step that always does the work is
+as broken as one that never does — it just fails quietly instead of loudly.
+
+**The scripts that create and destroy the box belong in `setup/bin/`**, and they
+follow invariant 2 like everything else. Three things worth building in from the
+start:
+
+- **rules are replaced, not added to.** Firewall rules, tags, and anything else
+  the provider stores as a list should be declared in the script and applied
+  wholesale each run. Create-time-only rules mean a port decided on later gets
+  opened by hand in a console and then exists nowhere in the repo.
+- **anything addressed by name needs a content check.** An ssh key or a security
+  group whose *name* exists is not one whose *contents* are current; that is
+  invariant 2 applied to the provider's API, and it is where a rotated
+  credential comes back from the dead on the next rebuild.
+- **a teardown script must refuse to tear down the machine it is running on.**
+  Compare the target's address against the local interfaces before anything
+  destructive runs. This becomes reachable the moment the provider's CLI is
+  installed *on* the box, which is exactly when it stops being hypothetical.
 
 ## Agents
 
