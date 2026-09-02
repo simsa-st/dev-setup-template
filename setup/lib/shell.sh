@@ -8,6 +8,10 @@
 #      BEGIN/END block that is rewritten wholesale on each run.
 
 step_shell() {
+  # Checked here rather than in preflight: packages installs zsh, and preflight
+  # runs before it. By this point it should exist, and if it does not the rest
+  # of this step would silently configure a shell nobody can start.
+  have zsh || die "zsh is still missing after the packages step; install it and re-run."
   local cfg="${DEV_SETUP_DIR}/config"
 
   link "${cfg}/shell/zshrc-base.zsh" "${XDG_CONFIG_HOME}/zshrc-base.zsh"
@@ -54,9 +58,21 @@ install_oh_my_zsh() {
   clone_or_pull https://github.com/zsh-users/zsh-syntax-highlighting.git "${custom}/plugins/zsh-syntax-highlighting"
   clone_or_pull https://github.com/zsh-users/zsh-autosuggestions.git "${custom}/plugins/zsh-autosuggestions"
 
-  # p10k's own config is generated per machine by `p10k configure`; it is not
-  # tracked here because it encodes terminal/font capabilities.
-  [ -f "${XDG_CONFIG_HOME}/p10k.zsh" ] || warn "run 'p10k configure' once to create ~/.config/p10k.zsh"
+  # p10k's config: tracked if you commit one, and you should. Left untracked,
+  # every new machine drops into `p10k configure` on first interactive login --
+  # fine for a human at a keyboard, fatal for an agent or any non-interactive
+  # session, which hangs forever at "Choice [ynq]:".
+  #
+  # It does encode terminal/font capability, but that is the *client* terminal:
+  # every machine you reach from one laptop is reached from the same terminal
+  # with the same font, so one config is right for all of them. Run `p10k
+  # configure` once and commit config/shell/p10k.zsh; it writes through the
+  # symlink into the repo, which is this repo's normal editing model.
+  if [ -f "${cfg}/shell/p10k.zsh" ]; then
+    link "${cfg}/shell/p10k.zsh" "${XDG_CONFIG_HOME}/p10k.zsh"
+  elif [ ! -f "${XDG_CONFIG_HOME}/p10k.zsh" ]; then
+    warn "no p10k config: run 'p10k configure', then commit it to config/shell/p10k.zsh"
+  fi
 }
 
 clone_or_pull() { # <url> <dir>

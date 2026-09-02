@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# Base packages. macOS uses Homebrew; Linux hosts are assumed to be shared
-# machines without root, so everything lands user-locally in ~/.config/bin.
+# Base packages. macOS uses Homebrew. On Linux there are two cases and the
+# difference is root, not the distro: a personal box has passwordless sudo and
+# should just get apt packages, while a shared machine has none and everything
+# has to land user-locally in ~/.config/bin. Detected, not declared -- the same
+# script has to work on both.
 
 # TODO(bootstrap): trim/extend to the packages this environment actually needs.
 BREW_PACKAGES=(
@@ -31,12 +34,38 @@ install_release_binary() { # <name> <url> [<path-inside-archive>]
   chmod +x "${dest}"
 }
 
+# Debian/Ubuntu packages, but only where we are actually allowed to install
+# them. zsh in particular is not optional: step_shell dies without it, so a box
+# that has never had it cannot be set up at all. mosh is what makes `conn
+# --mosh` work, and without it a connection dies with the laptop lid.
+# TODO(bootstrap): trim/extend to what this environment actually needs.
+APT_PACKAGES=(zsh tmux mosh git curl unzip direnv fzf ripgrep jq build-essential)
+
+apt_install_base() {
+  have apt-get || return 0
+  if ! sudo -n true 2> /dev/null; then
+    warn "no passwordless sudo; skipping apt (shared machine: user-local installs only)."
+    return 0
+  fi
+  local missing=() pkg
+  for pkg in "${APT_PACKAGES[@]}"; do
+    dpkg -s "${pkg}" > /dev/null 2>&1 || missing+=("${pkg}")
+  done
+  # Converge, but do not pay for an apt-get update on every single run.
+  [ ${#missing[@]} -eq 0 ] && return 0
+  log "apt-get install: ${missing[*]}"
+  sudo -n DEBIAN_FRONTEND=noninteractive apt-get update -qq || warn "apt-get update failed."
+  sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${missing[@]}" ||
+    warn "apt-get install failed for: ${missing[*]}"
+  hash -r
+}
+
 step_packages() {
   if [ "${TARGET}" = "macos" ]; then
     have brew || die "Homebrew is required on macOS: https://brew.sh"
     brew install "${BREW_PACKAGES[@]}"
   else
-    # No root on shared Linux machines: only user-local installs here.
+    apt_install_base
     for tool in curl git tmux zsh; do
       have "${tool}" || warn "${tool} is missing and needs an admin to install it."
     done

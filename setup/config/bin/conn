@@ -44,8 +44,13 @@ lemonade-tunnel "${name}" > /dev/null 2>&1 &
 
 remote_cmd="zsh -l"
 if [ "${USE_TMUX}" = "yes" ]; then
-  socket="${TMUX_SOCKET:-${HOME}/tmp-tmux-socket}"
-  remote_cmd="tmux -S ${socket} new-session -A -s ${SESSION} -c \${HOME} 'zsh -l'"
+  # Every $ here is escaped so it survives to the REMOTE shell. The socket path
+  # in particular must not be expanded locally: TMUX_SOCKET is ${HOME}-relative,
+  # so a macOS laptop would ship /Users/<me>/... to a Linux box, where that
+  # directory does not exist and tmux dies with "No such file or directory" --
+  # taking the whole connection with it. Only visible when local and remote HOME
+  # differ, which is exactly the laptop-to-remote case this repo is for.
+  remote_cmd="tmux -S \"\${TMUX_SOCKET:-\$HOME/tmp-tmux-socket}\" new-session -A -s ${SESSION} -c \"\$HOME\" 'zsh -l'"
 fi
 
 if [ "${USE_MOSH}" = "yes" ]; then
