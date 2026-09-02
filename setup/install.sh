@@ -41,7 +41,6 @@ MODE=""
 ONLY=""
 SKIP=""
 LIST_ONLY="no"
-RECREATE_ENV="no"
 
 usage() {
   sed -n '2,35p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
@@ -59,12 +58,10 @@ while [ $# -gt 0 ]; do
     --skip) SKIP="${2:?--skip needs a step list}"; shift 2 ;;
     --skip=*) SKIP="${1#*=}"; shift ;;
     --list-steps) LIST_ONLY="yes"; shift ;;
-    --recreate-env) RECREATE_ENV="yes"; shift ;;
     -h|--help) usage 0 ;;
     *) echo "Unknown argument: $1" >&2; usage 2 ;;
   esac
 done
-export RECREATE_ENV
 
 if [ -z "${TARGET}" ]; then
   case "${OSTYPE:-$(uname -s)}" in
