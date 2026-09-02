@@ -42,9 +42,19 @@ step_shell() {
   source "${XDG_CONFIG_HOME}/.bashrc-extra"
   [ "${DEV_SETUP_DIR}" = "${expected}" ] ||
     die "${XDG_CONFIG_HOME}/.bashrc-extra resolves to ${DEV_SETUP_DIR}, expected ${expected}"
+
+  # Installing zsh and writing ~/.zshrc still leaves a fresh Linux box logging
+  # in to bash, where none of the above loads. Full mode only, and this is the
+  # one place it belongs: the login shell is a property of the account, so a
+  # layer must never change it.
+  if [ "$(basename "${SHELL:-}")" != "zsh" ]; then
+    chsh -s "$(command -v zsh)" 2> /dev/null ||
+      warn "could not change the login shell to zsh; run: chsh -s $(command -v zsh)"
+  fi
 }
 
 install_oh_my_zsh() {
+  local cfg="${DEV_SETUP_DIR}/config"
   local omz="${XDG_CONFIG_HOME}/oh-my-zsh"
   local custom="${omz}/custom"
   if [ ! -d "${omz}" ]; then
@@ -73,10 +83,6 @@ install_oh_my_zsh() {
   elif [ ! -f "${XDG_CONFIG_HOME}/p10k.zsh" ]; then
     warn "no p10k config: run 'p10k configure', then commit it to config/shell/p10k.zsh"
   fi
-}
-
-clone_or_pull() { # <url> <dir>
-  if [ -d "$2/.git" ]; then git -C "$2" pull --quiet --ff-only || true; else git clone --depth=1 "$1" "$2"; fi
 }
 
 write_zshrc_header() {
@@ -144,17 +150,32 @@ write_layer_envrc() {
     return 0
   fi
 
+  # DEV_HOSTS_FILE is here rather than in bashrc-layer because it must be
+  # tree-scoped like the rest. `conn` calls ~/.config/bin/hosts, which is the
+  # *base* setup's script resolving the base setup's hosts.toml -- so without
+  # this line `conn <alias>` inside this tree silently reaches the other
+  # instantiation's machines. The script honours this variable ahead of
+  # DEV_SETUP_DIR, which the base setup's bashrc-extra exports globally.
   local snippet
   snippet=$(mktemp)
   cat > "${snippet}" << EOF
 export NVIM_APPNAME=${LAYER_NVIM_APPNAME}
 export PI_CODING_AGENT_DIR="\${HOME}/.pi-${LAYER_SUFFIX}/agent"
 export CLAUDE_CONFIG_DIR="\${HOME}/.claude-${LAYER_SUFFIX}"
+export DEV_HOSTS_FILE=${DEV_SETUP_DIR}/config/ssh/hosts.toml
 EOF
   managed_block "${envrc}" "ENVRC" "${snippet}"
   rm -f "${snippet}"
 
-  have direnv || warn "direnv is not installed; ${envrc} will not load."
+  # Allowed here rather than left as a manual step. direnv refuses an .envrc it
+  # has not been told to trust, and the installer has just rewritten this one --
+  # which *revokes* an earlier allow, so leaving it out means every re-run
+  # silently turns the layer off until somebody notices.
+  if have direnv; then
+    direnv allow "${LAYER_ROOT}"
+  else
+    warn "direnv is not installed; ${envrc} will not load."
+  fi
 }
 
 step_tmux() {
