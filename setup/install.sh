@@ -88,6 +88,14 @@ source "${DEV_SETUP_DIR}/lib/agents.sh"
 source "${DEV_SETUP_DIR}/lib/sessions.sh"
 source "${DEV_SETUP_DIR}/lib/clipboard.sh"
 
+# Everything this installer installs user-locally lands in ${XDG_CONFIG_HOME}/bin
+# (uv, node shims, delta, jq, the helper scripts). Put it on PATH here rather
+# than relying on step_shell, which sources bashrc-extra as a side effect and is
+# both full-mode-only and skippable: `--only project` otherwise ran with a
+# different PATH than a full install and reported tools "not installed" that
+# were sitting right there.
+export PATH="${XDG_CONFIG_HOME:-${HOME}/.config}/bin:${PATH}"
+
 resolve_mode "${MODE}"
 load_profile
 
