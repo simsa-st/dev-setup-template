@@ -75,6 +75,72 @@ EOF
   rm -f "${snippet}"
 }
 
+# The layer's own shell environment. Runs in both modes, because the file it
+# installs is this repo's regardless of who owns the base -- what changes is
+# only whether anything else is competing for ~/.zshrc.
+#
+# The block is *appended*: in layer mode the base setup owns the head of that
+# file, and p10k's instant prompt has to stay near the top.
+step_env() {
+  link "${DEV_SETUP_DIR}/config/shell/bashrc-layer" "${LAYER_BASHRC}"
+
+  # Two things stay unexpanded on purpose. The path is a ~/.config one rather
+  # than a repo one, so moving this checkout re-points a symlink instead of
+  # editing $HOME; and ${HOME}/${XDG_CONFIG_HOME} are written literally, so the
+  # block is resolved when the shell starts rather than frozen to whatever the
+  # installing user's home happened to be.
+  local snippet
+  snippet=$(mktemp)
+  cat > "${snippet}" << EOF
+_layer_bashrc="\${XDG_CONFIG_HOME:-\${HOME}/.config}/.bashrc-${LAYER_SUFFIX}"
+[ -f "\${_layer_bashrc}" ] && source "\${_layer_bashrc}"
+unset _layer_bashrc
+EOF
+  managed_block "${HOME}/.zshrc" "SHELL" "${snippet}"
+  rm -f "${snippet}"
+
+  write_layer_envrc
+}
+
+# The switch that makes two setups coexist without either being reconfigured:
+# entering LAYER_ROOT points the editor and the agents at this layer's configs,
+# and leaving it puts them back. Without it, a layer would have to either change
+# the tools' defaults globally -- which is the base setup's business -- or be
+# reachable only through aliases.
+#
+# direnv is what applies it; it is in the package list, and an .envrc has to be
+# `direnv allow`ed once per machine.
+write_layer_envrc() {
+  [ -n "${LAYER_ROOT:-}" ] || return 0
+  local envrc="${LAYER_ROOT}/.envrc"
+
+  # In full mode the canonical paths *are* this repo's, so the overrides are
+  # not merely unnecessary but wrong. Removing the block matters because a
+  # machine can be switched from layer to full, and a step that only ever adds
+  # cannot undo itself.
+  if [ "${DEVSETUP_MODE}" = "full" ]; then
+    remove_managed_block "${envrc}" "ENVRC"
+    return 0
+  fi
+
+  if [ ! -d "${LAYER_ROOT}" ]; then
+    warn "${LAYER_ROOT} does not exist; skipping the direnv layer profile."
+    return 0
+  fi
+
+  local snippet
+  snippet=$(mktemp)
+  cat > "${snippet}" << EOF
+export NVIM_APPNAME=${LAYER_NVIM_APPNAME}
+export PI_CODING_AGENT_DIR="\${HOME}/.pi-${LAYER_SUFFIX}/agent"
+export CLAUDE_CONFIG_DIR="\${HOME}/.claude-${LAYER_SUFFIX}"
+EOF
+  managed_block "${envrc}" "ENVRC" "${snippet}"
+  rm -f "${snippet}"
+
+  have direnv || warn "direnv is not installed; ${envrc} will not load."
+}
+
 step_tmux() {
   [ -d "${HOME}/.tmux/plugins/tpm" ] ||
     git clone --depth=1 https://github.com/tmux-plugins/tpm "${HOME}/.tmux/plugins/tpm"

@@ -74,6 +74,8 @@ Do not guess these. Ask, and write the answers into the files named.
 
 | Question | Where the answer goes |
 |---|---|
+| Does this repo own the machine, or install beside another setup? (see the modes in `setup/install.sh`) | `--mode` on the first run; recorded in `machine.local.env` |
+| If it installs beside another setup: which tree is this setup's work in, and what suffix names its paths? | `LAYER_ROOT`, `LAYER_SUFFIX`, `MANAGED_BLOCK_PREFIX` in `profile.env` |
 | Git identity (name, email) | `setup/config/profile.env` |
 | Which machines do you develop on? Names, aliases, whether they are shared, whether a bastion/jump host is needed | `setup/config/ssh/hosts.toml` |
 | Are you one of several users on those machines? What is your user slot? | `hosts.toml` `[defaults] user_id`, mosh port ranges per machine |
@@ -99,6 +101,20 @@ Do not guess these. Ask, and write the answers into the files named.
 4. `cp setup/config/secrets/env.example setup/config/secrets/env`, `chmod 600`,
    fill in. It is gitignored — never commit it, and never replace that rule with
    file permissions on committed plaintext.
+
+## 2b. Decide the mode, and what the layer is called
+
+`./setup/install.sh --mode full` if this repo owns the machine;
+`--mode layer` (the default) if another setup already owns `~/.zshrc`,
+`~/.tmux.conf`, `~/.config/nvim` and the packages. Layer mode installs only
+paths named by `LAYER_SUFFIX` plus namespaced blocks in files it does not own,
+so the two installs are order-independent — but that guarantee is only as good
+as the names: two instantiations that share a `LAYER_SUFFIX` or a
+`MANAGED_BLOCK_PREFIX` will quietly overwrite each other.
+
+Fill in `shell/bashrc-layer` while you are here — it is the shell environment
+this setup adds, and it carries a `TODO(bootstrap)` marker for the aliases and
+PATH entries that must work anywhere on the machine.
 
 ## 3. Add the project-specific step
 

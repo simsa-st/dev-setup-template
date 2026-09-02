@@ -1,0 +1,50 @@
+# This setup's layer of the shell environment. Symlinked to
+# ~/.config/.bashrc-<LAYER_SUFFIX> and sourced from a managed block at the *end*
+# of ~/.zshrc, so on a machine another setup owns it loads after that setup's
+# own shell config and can rely on it having run.
+#
+# Keep it safe to source repeatedly and from a non-interactive shell.
+#
+# What belongs here: things that must be reachable from anywhere on the machine
+# — this setup's secrets, and the aliases that reach its tools from outside its
+# tree. What belongs in ${LAYER_ROOT}/.envrc instead: anything that changes the
+# default behaviour of a tool the other setup also uses (NVIM_APPNAME,
+# CLAUDE_CONFIG_DIR, ...), because those must apply only while you are working
+# in this tree.
+
+# Resolve this repo from the location of this file, so the same config works
+# from any checkout path and nothing hard-codes a repo location.
+if [ -n "${BASH_SOURCE:-}" ]; then
+  _devsetup_layer_source="${BASH_SOURCE[0]}"
+elif [ -n "${ZSH_VERSION:-}" ]; then
+  _devsetup_layer_source="${(%):-%N}"
+else
+  _devsetup_layer_source="$0"
+fi
+# this file is setup/config/shell/bashrc-layer, so the setup dir is two up
+_devsetup_layer_shell_dir="$(dirname "$(realpath "${_devsetup_layer_source}")")"
+export DEV_SETUP_LAYER_DIR="$(dirname "$(dirname "${_devsetup_layer_shell_dir}")")"
+export DEV_REPO_LAYER_DIR="$(dirname "${DEV_SETUP_LAYER_DIR}")"
+unset _devsetup_layer_source _devsetup_layer_shell_dir
+
+# --- this setup's environment --------------------------------------------
+set -a
+[ -f "${DEV_SETUP_LAYER_DIR}/config/profile.env" ] && . "${DEV_SETUP_LAYER_DIR}/config/profile.env"
+[ -f "${DEV_SETUP_LAYER_DIR}/config/machine.local.env" ] && . "${DEV_SETUP_LAYER_DIR}/config/machine.local.env"
+# Never committed — see config/secrets/README.md.
+[ -f "${DEV_SETUP_LAYER_DIR}/config/secrets/env" ] && . "${DEV_SETUP_LAYER_DIR}/config/secrets/env"
+set +a
+
+# --- this layer's tooling, reachable from anywhere ------------------------
+# The .envrc switches these inside ${LAYER_ROOT}; these aliases are how you
+# reach the same tools from outside it, without changing anyone's defaults.
+alias v${LAYER_SUFFIX:0:1}="NVIM_APPNAME=nvim-${LAYER_SUFFIX} nvim"
+alias cl${LAYER_SUFFIX:0:1}="CLAUDE_CONFIG_DIR=\${HOME}/.claude-${LAYER_SUFFIX} claude"
+alias p${LAYER_SUFFIX:0:1}="PI_CODING_AGENT_DIR=\${HOME}/.pi-${LAYER_SUFFIX}/agent pi"
+
+# --- navigation -----------------------------------------------------------
+alias cs${LAYER_SUFFIX:0:1}="cd ${DEV_SETUP_LAYER_DIR}"
+
+# TODO(bootstrap): add this environment's own aliases, PATH entries and env
+# vars below — the ones that must work anywhere on the machine, not only inside
+# ${LAYER_ROOT}. Anything tree-scoped belongs in .envrc instead.

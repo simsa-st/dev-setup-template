@@ -49,17 +49,25 @@ install_node() {
 # Neovim itself is managed by bob (a version manager), so the installed version
 # is a config value rather than whatever the OS package manager ships. The
 # config lives in its own repo — see NVIM_CONFIG_REPO in profile.env.
+# Both modes get the config at its layer path (~/.config/nvim-<suffix>), reached
+# with NVIM_APPNAME; full mode additionally installs neovim itself and claims
+# ~/.config/nvim. In layer mode the neovim *binary* belongs to the base setup --
+# a second bob-managed install would shadow it on PATH.
 step_nvim() {
+  if [ -z "${NVIM_CONFIG_REPO:-}" ]; then
+    warn "NVIM_CONFIG_REPO is unset in profile.env; skipping the neovim config."
+    return 0
+  fi
+
+  local src="${XDG_CONFIG_HOME}/nvim-config"
+  clone_or_pull "${NVIM_CONFIG_REPO}" "${src}"
+  link "${src}" "${LAYER_NVIM_DIR}"
+
+  [ "${DEVSETUP_MODE}" = "full" ] || return 0
+
   install_bob
   bob use "${NVIM_VERSION}"
-
-  if [ -n "${NVIM_CONFIG_REPO:-}" ]; then
-    local src="${XDG_CONFIG_HOME}/nvim-config"
-    clone_or_pull "${NVIM_CONFIG_REPO}" "${src}"
-    link "${src}" "${XDG_CONFIG_HOME}/${NVIM_APPNAME:-nvim}"
-  else
-    warn "NVIM_CONFIG_REPO is unset in profile.env; skipping the neovim config."
-  fi
+  link "${src}" "${XDG_CONFIG_HOME}/${NVIM_APPNAME:-nvim}"
 }
 
 install_bob() {

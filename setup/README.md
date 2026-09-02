@@ -3,29 +3,64 @@
 One entry point installs a whole machine:
 
 ```bash
-./setup/install.sh                    # auto-detects macos | linux
+./setup/install.sh                    # auto-detects macos | linux; layer mode
+./setup/install.sh --mode full        # this repo owns the machine; remembered
 ./setup/install.sh --target linux     # force the target
 ./setup/install.sh --only shell,tmux  # re-run a subset after editing config
 ./setup/install.sh --skip nvim
-./setup/install.sh --list-steps
+./setup/install.sh --list-steps       # annotated with what this mode skips
 ```
+
+## Two modes
+
+**`full`** — this repo owns the machine. Packages, zsh, tmux, git, uv/node, and
+the editor and agent configs at their canonical paths (`~/.config/nvim`,
+`~/.claude`, `~/.pi`).
+
+**`layer`** (the default) — another setup owns the base: a work dotfiles repo,
+or a second instantiation of this template. This install then adds only its own
+layer beside it, and touches nothing the other setup writes:
+
+| Full mode writes | Layer mode writes instead |
+|---|---|
+| `~/.config/nvim` | `~/.config/nvim-<suffix>` |
+| `~/.claude`, `~/.pi` | `~/.claude-<suffix>`, `~/.pi-<suffix>` |
+| `~/.zshrc` header block (top) | `~/.zshrc` layer block (appended) |
+| `~/.ssh/config` | `~/.ssh/config.d/<suffix>-hosts` |
+| the packages, zsh, tmux and git config themselves | nothing — they are the other setup's |
+
+`<suffix>` is `LAYER_SUFFIX` from `profile.env`, and `MANAGED_BLOCK_PREFIX`
+namespaces the blocks. Two instantiations sharing a machine **must** differ in
+both, or each install silently overwrites the other's work.
+
+The switch between them is `${LAYER_ROOT}/.envrc`: entering this setup's tree
+exports `NVIM_APPNAME`, `CLAUDE_CONFIG_DIR` and `PI_CODING_AGENT_DIR` for the
+layer, and leaving it restores the other setup's defaults. That is what lets
+both setups keep their own agent logins and editor config without either being
+reconfigured; `shell/bashrc-layer` carries the aliases that reach the same tools
+from outside the tree.
+
+Because layer mode writes only paths the other setup never touches, the two
+installs are **order-independent** and either can be re-run at any time. That
+property is the whole point, and it is the one to check when adding a step.
 
 Steps run in this order, each one a `step_<name>` function in `lib/`:
 
-| Step | What it does |
-|---|---|
-| `preflight` | load `config/profile.env`, check zsh/git/python3 |
-| `packages` | Homebrew formulae (macOS) or user-local release binaries (Linux) |
-| `shell` | oh-my-zsh + p10k, `~/.config` symlinks, managed `~/.zshrc` header |
-| `tmux` | tpm + `tmux.conf` symlink |
-| `git` | render `~/.config/git/config` from the profile |
-| `tools` | uv, node/nvm, repo pre-commit hook |
-| `nvim` | bob + the pinned neovim, clone/symlink the config repo |
-| `agents` | Claude Code and pi: install binaries, symlink config into `$HOME` |
-| `sessions` | timer that saves the tmux layout and the agent name map |
-| `clipboard` | lemonade server (macOS) or client + host IP (Linux) |
-| `ssh` | generate `~/.ssh/config` and port forwards from `hosts.toml` |
-| `finish` | print what to run next |
+| Step | Mode | What it does |
+|---|---|---|
+| `preflight` | both | load `config/profile.env`, check zsh/git/python3 |
+| `packages` | full | Homebrew formulae (macOS) or user-local release binaries (Linux) |
+| `shell` | full | oh-my-zsh + p10k, `~/.config` symlinks, managed `~/.zshrc` header |
+| `tmux` | full | tpm + `tmux.conf` symlink |
+| `git` | full | render `~/.config/git/config` from the profile |
+| `tools` | full | uv, node/nvm, repo pre-commit hook |
+| `nvim` | both | clone/symlink the config repo; full mode also installs neovim |
+| `agents` | both | symlink agent config; full mode also installs the binaries |
+| `env` | both | `bashrc-layer`, the `~/.zshrc` block, `${LAYER_ROOT}/.envrc` |
+| `sessions` | full | timer that saves the tmux layout and the agent name map |
+| `clipboard` | full | lemonade server (macOS) or client + host IP (Linux) |
+| `ssh` | both | hosts from `hosts.toml`: whole config, or a `config.d` fragment |
+| `finish` | both | print what to run next |
 
 ## Invariants
 
@@ -34,7 +69,7 @@ start corrupting dotfiles.
 
 1. **Idempotent.** Re-running any step must be a no-op when nothing changed.
    Never append to a user-owned file: symlink the repo file, or rewrite a
-   `# BEGIN/END DEVSETUP_<name>` managed block (`managed_block` in
+   `# BEGIN/END <MANAGED_BLOCK_PREFIX>_<name>` managed block (`managed_block` in
    `lib/common.sh`).
 2. **Converge, do not skip.** "Already present, leaving it alone" is not
    idempotence — it makes a step incapable of ever fixing a stale value. Compare
@@ -48,20 +83,32 @@ start corrupting dotfiles.
    one-liner, and especially dangerous because nothing local shows the drift:
    an entry a step created once and never checked again will happily hand a
    rebuilt machine a credential that was deliberately retired.
-3. **Refuse the wrong environment before doing anything.** Validate the target
+3. **In layer mode, stay out of the other setup's files.** Every path a step
+   writes must be one the base setup never touches. Adding a step that writes
+   `~/.zshrc`'s header, `~/.tmux.conf`, `~/.config/bin/*` or `~/.ssh/config`
+   in layer mode makes install order matter again, and order-independence is
+   the property that makes two setups on one machine survivable at all.
+4. **Mode is declared, not detected.** Guessing from what happens to be
+   installed makes a first run on a half-set-up machine take over files it
+   should not — and a first run is exactly when the evidence for guessing is
+   weakest. `--mode` is explicit and recorded in `machine.local.env`.
+5. **A step that stops applying must undo itself.** A machine can be switched
+   from layer to full. A step that only ever adds leaves the layer's managed
+   block behind forever; `remove_managed_block` is the other half.
+6. **Refuse the wrong environment before doing anything.** Validate the target
    and the arguments at the very top of an entry point, above any step that
    relocates, clones or writes — a guard below such a step cannot undo what it
    did.
-4. **No repo paths in dotfiles.** `~/.zshrc` references `~/.config/...` only.
+7. **No repo paths in dotfiles.** `~/.zshrc` references `~/.config/...` only.
    Moving the checkout re-points symlinks; it does not edit `$HOME`.
-5. **Back up before replacing.** Anything real that a symlink would overwrite is
+8. **Back up before replacing.** Anything real that a symlink would overwrite is
    moved to `~/dev-setup-backups/<timestamp>/` (`link`, `backup_path`).
-6. **No root on Linux.** Shared machines are installed user-locally into
+9. **No root on Linux.** Shared machines are installed user-locally into
    `~/.config/bin`. If a step needs `sudo`, it belongs on macOS only.
-7. **Layered configuration.** `config/profile.env` (committed, same everywhere)
+10. **Layered configuration.** `config/profile.env` (committed, same everywhere)
    → `config/machine.local.env` (gitignored, per machine) → `config/secrets/env`
    (gitignored, never committed).
-8. **Install files, not session state.** A step that mutates something living in
+11. **Install files, not session state.** A step that mutates something living in
    the current login — an ssh-agent, a running daemon's in-memory config, an
    exported variable — has nothing to converge on and no effect that survives a
    logout, and it usually wants to prompt. `ssh-add --apple-use-keychain` is the

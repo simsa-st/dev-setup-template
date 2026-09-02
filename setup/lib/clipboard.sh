@@ -22,6 +22,11 @@ step_clipboard() {
   fi
 }
 
+# ~/.ssh/config is generated in full mode and left strictly alone in layer mode,
+# where the whole layer lives in ~/.ssh/config.d/ instead. That directory is the
+# one place two setups can both write without an ordering problem, which is why
+# the fragments are named by LAYER_SUFFIX -- a second instantiation gets its own
+# file rather than overwriting this one.
 step_ssh() {
   local hosts="${DEV_SETUP_DIR}/config/ssh/hosts.toml"
   if [ ! -f "${hosts}" ]; then
@@ -29,18 +34,30 @@ step_ssh() {
     return 0
   fi
 
-  local generated="${HOME}/.ssh/config.d/generated-port-forwards"
-  mkdir -p "${HOME}/.ssh/config.d"
+  local d="${HOME}/.ssh/config.d"
+  mkdir -p "${d}"
   chmod 700 "${HOME}/.ssh"
 
-  backup_path "${HOME}/.ssh/config"
-  "${DEV_SETUP_DIR}/config/bin/hosts" ssh-config --base > "${HOME}/.ssh/config"
+  if [ "${DEVSETUP_MODE}" = "full" ]; then
+    backup_path "${HOME}/.ssh/config"
+    "${DEV_SETUP_DIR}/config/bin/hosts" ssh-config --base > "${HOME}/.ssh/config"
+    chmod 600 "${HOME}/.ssh/config"
+    # A leftover from a machine that was once in layer mode would otherwise
+    # duplicate every Host block that is now in ~/.ssh/config itself.
+    rm -f "${d}/${LAYER_SUFFIX}-hosts"
+  else
+    "${DEV_SETUP_DIR}/config/bin/hosts" ssh-config --fragment > "${d}/${LAYER_SUFFIX}-hosts"
+    chmod 600 "${d}/${LAYER_SUFFIX}-hosts"
+    ensure_ssh_config_include
+  fi
+
+  local generated="${d}/generated-port-forwards"
   "${DEV_SETUP_DIR}/config/bin/hosts" ssh-config --forwards > "${generated}"
-  chmod 600 "${HOME}/.ssh/config" "${generated}"
+  chmod 600 "${generated}"
 
   local custom="${DEV_SETUP_DIR}/config/ssh/custom-forwards"
   if [ -f "${custom}" ]; then
-    cp "${custom}" "${HOME}/.ssh/config.d/custom-forwards"
-    chmod 600 "${HOME}/.ssh/config.d/custom-forwards"
+    cp "${custom}" "${d}/custom-forwards"
+    chmod 600 "${d}/custom-forwards"
   fi
 }
