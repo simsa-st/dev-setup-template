@@ -155,7 +155,7 @@ install_bob() {
     brew install bob
   else
     install_release_binary bob \
-      "https://github.com/MordechaiHadad/bob/releases/latest/download/bob-linux-x86_64.zip" \
+      "https://github.com/MordechaiHadad/bob/releases/download/${BOB_VERSION}/bob-linux-x86_64.zip" \
       "bob-linux-x86_64/bob"
   fi
 }

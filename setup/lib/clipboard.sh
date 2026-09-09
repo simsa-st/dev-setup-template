@@ -12,7 +12,9 @@ step_clipboard() {
     # Server side: built from source so it works on Apple Silicon.
     if [ ! -x "${HOME}/go/bin/lemonade" ]; then
       have go || die "go is required to build lemonade on macOS."
-      go install github.com/lemonade-command/lemonade@latest
+      # Same version as the Linux release below: two machines on either end of
+      # one clipboard should not be running different lemonades.
+      go install "github.com/lemonade-command/lemonade@${LEMONADE_VERSION}"
     fi
   else
     install_release_binary lemonade \
