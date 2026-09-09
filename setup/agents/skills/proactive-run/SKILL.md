@@ -82,11 +82,10 @@ heartbeat at any size; it is what makes the run survive the night.
    scratchpad/inbox scripts run, the deliverable folder can be committed.
 6. `scripts/run.sh init <dir>` scaffolds the layout and `meta/run.env`; fill
    in the deadline, session, models, and window command, then
-   `scripts/run.sh start`. `RUN_AGENT_ARGS` ships empty: an unattended run
-   normally needs `--dangerously-skip-permissions`, because a prompt nobody is
-   there to answer stalls that agent until the deadline — but it removes every
-   confirmation from every role for the whole run, so add it only once you
-   have decided the run's blast radius is acceptable.
+   `scripts/run.sh start`. `RUN_AGENT_ARGS` defaults to
+   `--dangerously-skip-permissions`, which is what unattended autonomy costs:
+   every role runs unconfirmed for the length of the run, so point
+   `RUN_WORK_DIR` at a repo whose blast radius you accept.
 
 ## Operating rules
 

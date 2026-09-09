@@ -42,13 +42,12 @@ RUN_WINDOW_CMD=\${SHELL:-/bin/bash}
 # The agent CLI. Pin models explicitly — an ambiguous name once selected the
 # wrong provider for a whole run.
 #
-# RUN_AGENT_ARGS is empty on purpose. An unattended run usually does want
-# --dangerously-skip-permissions -- a prompt nobody is there to answer stalls
-# that agent until the deadline -- but it removes every confirmation from every
-# role for the whole run, so it is opted into once, deliberately, with the work
-# dir and the blast radius in view.
+# Skipping permissions is what makes an unattended run possible at all: a
+# prompt nobody is there to answer stalls that agent until the deadline. The
+# price is that every role runs unconfirmed for the length of the run, so point
+# RUN_WORK_DIR at a repo whose blast radius you accept.
 RUN_AGENT_BIN=claude
-RUN_AGENT_ARGS=''
+RUN_AGENT_ARGS='--dangerously-skip-permissions'
 RUN_MODEL_FLAG=--model
 RUN_CONTINUE_FLAG=--continue
 
