@@ -58,7 +58,7 @@ Steps run in this order, each one a `step_<name>` function in `lib/`:
 | `tmux` | full | tpm + `tmux.conf` symlink |
 | `git` | both | full: render `~/.config/git/config`; layer: an `includeIf` in `~/.gitconfig` giving `${LAYER_ROOT}` this identity |
 | `tools` | full | uv, node/nvm, repo pre-commit hook |
-| `nvim` | both | clone/symlink the config repo; full mode also installs neovim |
+| `nvim` | both | clone/symlink the config repo; full mode also installs neovim and the tree-sitter CLI |
 | `agents` | both | symlink agent config; full mode also installs the binaries |
 | `env` | both | `bashrc-layer`, the `~/.zshrc` block, `${LAYER_ROOT}/.envrc` |
 | `sessions` | full | timer that saves the tmux layout and the agent name map |

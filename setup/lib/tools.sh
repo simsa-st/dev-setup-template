@@ -75,7 +75,24 @@ step_nvim() {
 
   install_bob
   bob use "${NVIM_VERSION}"
+  install_tree_sitter_cli
   link "${src}" "${XDG_CONFIG_HOME}/${NVIM_APPNAME:-nvim}"
+}
+
+# nvim-treesitter's main branch does not ship compiled parsers; it downloads
+# each grammar and shells out to `tree-sitter build`, so without the CLI every
+# parser install fails with ENOENT and nothing gets highlighted (the master
+# branch, which needed only a C compiler, is frozen and refuses Neovim 0.12).
+# macOS gets it from Homebrew (BREW_PACKAGES); the release zip holds the bare
+# binary, which is what install_release_binary expects.
+install_tree_sitter_cli() {
+  have tree-sitter && return 0
+  if [ "${TARGET}" = "macos" ] && have brew; then
+    brew install tree-sitter
+  else
+    install_release_binary tree-sitter \
+      "https://github.com/tree-sitter/tree-sitter/releases/download/${TREE_SITTER_CLI_VERSION}/tree-sitter-cli-linux-x64.zip"
+  fi
 }
 
 install_bob() {

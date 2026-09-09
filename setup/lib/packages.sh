@@ -5,9 +5,12 @@
 # has to land user-locally in ~/.config/bin. Detected, not declared -- the same
 # script has to work on both.
 
+# tree-sitter: the CLI nvim-treesitter (main branch) shells out to when it
+# compiles a parser; without it every `:TSInstall` fails with ENOENT. Linux
+# gets it as a release binary in tools.sh (install_tree_sitter_cli).
 # TODO(bootstrap): trim/extend to the packages this environment actually needs.
 BREW_PACKAGES=(
-  autossh direnv fzf git git-delta git-lfs go jq mosh ripgrep tmux uv zsh
+  autossh direnv fzf git git-delta git-lfs go jq mosh ripgrep tmux tree-sitter uv zsh
   font-meslo-lg-nerd-font
 )
 
