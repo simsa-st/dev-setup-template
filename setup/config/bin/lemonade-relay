@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""TCP relay: 0.0.0.0:<relay_port> -> 127.0.0.1:<tunnel_port>.
+"""TCP relay: <relay_bind>:<relay_port> -> 127.0.0.1:<tunnel_port>.
 
 Lives on the remote host. The reverse SSH tunnel only binds loopback, which is
 invisible to containers and to processes in other namespaces; this relay gives
@@ -9,6 +9,11 @@ them one reachable address for the clipboard.
 
 --restart kills any running relay and re-launches this one detached, which is
 what `lemonade-tunnel` invokes over SSH on every connect.
+
+The relay authenticates nobody: whoever reaches it gets the clipboard at the far
+end of the tunnel. It binds every interface by default because containers and
+other namespaces have to reach it, which is the whole reason it exists -- narrow
+LEMONADE_RELAY_BIND on a host you share with anyone you do not trust.
 """
 
 from __future__ import annotations
@@ -22,6 +27,7 @@ import threading
 
 RELAY_PORT = int(os.environ.get("LEMONADE_RELAY_PORT", "64011"))
 DEFAULT_TUNNEL_PORT = int(os.environ.get("LEMONADE_TUNNEL_PORT", "64010"))
+RELAY_BIND = os.environ.get("LEMONADE_RELAY_BIND", "0.0.0.0")
 
 
 def pump(source: socket.socket, destination: socket.socket) -> None:
@@ -59,9 +65,9 @@ def handle(client: socket.socket, tunnel_port: int) -> None:
 def serve(tunnel_port: int) -> None:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
         server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server.bind(("0.0.0.0", RELAY_PORT))
+        server.bind((RELAY_BIND, RELAY_PORT))
         server.listen(16)
-        print(f"relay listening on 0.0.0.0:{RELAY_PORT} -> 127.0.0.1:{tunnel_port}")
+        print(f"relay listening on {RELAY_BIND}:{RELAY_PORT} -> 127.0.0.1:{tunnel_port}")
         while True:
             client, _ = server.accept()
             threading.Thread(target=handle, args=(client, tunnel_port), daemon=True).start()

@@ -36,6 +36,7 @@ else
   echo "warning: lemonade tunnel to ${host} may not have started" >&2
 fi
 
-# The relay fans the tunnel's loopback port out to 0.0.0.0 so containers and
-# other processes on the remote host can reach it too.
+# The relay fans the tunnel's loopback port out to LEMONADE_RELAY_BIND (every
+# interface by default) so containers and other processes on the remote host can
+# reach it too.
 ssh "${host}" "\${HOME}/.config/bin/lemonade-relay --restart ${remote_port}" >&2 || true
