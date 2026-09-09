@@ -42,6 +42,14 @@ repos:
         files: ^experiments/[0-9]{6}_.+/(?:.*\.py|pyproject\.toml|uv\.lock)$
         require_serial: true
 
+  # A public repo takes contributions from people whose shell history you
+  # cannot see. profile.env, hosts.toml and secrets/ are gitignored, but that
+  # only helps for the paths someone thought of in advance.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
   - repo: https://github.com/shellcheck-py/shellcheck-py
     rev: v0.11.0.1
     hooks:

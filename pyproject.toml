@@ -4,6 +4,8 @@ name = "dev-setup"
 version = "0.1.0"
 description = "Personal development environment setup and dated experiments."
 requires-python = ">=3.13"
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = []
 
 # The root project exists for repo-wide tooling and shared code only. Each
