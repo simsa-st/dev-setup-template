@@ -272,8 +272,9 @@ def main() -> None:
     ssh_config = sub.add_parser("ssh-config", help="generate SSH config")
     group = ssh_config.add_mutually_exclusive_group(required=True)
     group.add_argument("--base", action="store_true", help="whole ~/.ssh/config (full mode)")
-    group.add_argument("--fragment", action="store_true",
-                       help="drop-in for ~/.ssh/config.d/ (layer mode)")
+    group.add_argument(
+        "--fragment", action="store_true", help="drop-in for ~/.ssh/config.d/ (layer mode)"
+    )
     group.add_argument("--forwards", action="store_true")
     ssh_config.set_defaults(func=cmd_ssh_config)
 
