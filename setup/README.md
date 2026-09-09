@@ -63,7 +63,7 @@ Steps run in this order, each one a `step_<name>` function in `lib/`:
 | `env` | both | `bashrc-layer`, the `~/.zshrc` block, `${LAYER_ROOT}/.envrc` |
 | `sessions` | full | timer that saves the tmux layout and the agent name map |
 | `clipboard` | full | lemonade server (macOS) or client + host IP (Linux) |
-| `ssh` | both | hosts from `hosts.toml`: whole config, or a `config.d` fragment |
+| `ssh` | both | hosts from `hosts.toml`: whole config, or a `config.d` fragment. Pins `github.com` to `[defaults].identity_file` (`git_hosts` to change the list) and warns when that key is missing or not accepted by github — without the pin, `git@github.com:` remotes fail on a fresh box |
 | `finish` | both | print what to run next |
 
 ## Invariants

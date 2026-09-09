@@ -77,4 +77,47 @@ step_ssh() {
     cp "${custom}" "${d}/${LAYER_SUFFIX}-custom-forwards"
     chmod 600 "${d}/${LAYER_SUFFIX}-custom-forwards"
   fi
+
+  check_git_ssh_key
+}
+
+# The key itself can never be in this repo, and it is generated per machine on
+# purpose -- so on a fresh box the config above points at a file that does not
+# exist yet. Left silent, that surfaces much later as `git fetch` failing with
+# "Permission denied (publickey)", or as a project step skipping half the repos
+# with a vague "access? ssh key?". Say it here, with the commands.
+check_git_ssh_key() {
+  local identity
+  identity="$("${DEV_SETUP_DIR}/config/bin/hosts" identity 2>/dev/null)" || return 0
+  [ -n "${identity}" ] || return 0
+  identity="${identity/#\~/${HOME}}"
+
+  if [ ! -f "${identity}" ]; then
+    warn "no ssh key at ${identity}; every git@github.com remote will fail. Create it:"
+    printf '    ssh-keygen -t ed25519 -C "%s" -f %s\n' "${GIT_USER_EMAIL:-you@example.com}" "${identity}"
+    printf '    gh auth refresh -h github.com -s admin:public_key\n'
+    printf '    gh ssh-key add %s.pub --title "$(hostname -s)"\n' "${identity}"
+    return 0
+  fi
+
+  # The key exists but may not be registered on the account -- same error, same
+  # confusion. One cheap probe: github answers a successful auth on stderr and
+  # exits 1 either way, so match the message, never the status.
+  #
+  # Captured into a variable rather than piped into grep: install.sh runs under
+  # `set -o pipefail`, where ssh's unconditional exit 1 becomes the pipeline's
+  # status and a *successful* auth reads as a failure. That is not theoretical
+  # -- it warned on every run of this step until the pipe went away.
+  have ssh || return 0
+  local probe
+  probe="$(timeout 15 ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
+      -T git@github.com 2>&1 || true)"
+  case "${probe}" in
+    *"successfully authenticated"*) return 0 ;;
+  esac
+
+  warn "${identity} exists but github.com did not accept it; add the public half:"
+  printf '    gh auth refresh -h github.com -s admin:public_key\n'
+  printf '    gh ssh-key add %s.pub --title "$(hostname -s)"\n' "${identity}"
+  printf '  (or paste it at https://github.com/settings/keys)\n'
 }

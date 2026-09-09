@@ -13,6 +13,7 @@ service on several machines lands on distinct local ports, and several people
 on one shared machine do not collide.
 
     hosts resolve <alias>            # -> name, hostname, mosh port range
+    hosts identity                   # -> the default identity_file
     hosts ssh-config --base          # -> ~/.ssh/config           (full mode)
     hosts ssh-config --fragment      # -> ~/.ssh/config.d/<suffix>-hosts (layer)
     hosts ssh-config --forwards      # -> ~/.ssh/config.d/generated-port-forwards
@@ -145,6 +146,24 @@ def generate_base(config: dict, fragment: bool = False) -> str:
             "IgnoreUnknown UseKeychain",
             "",
         ]
+    # git forges get the same treatment as a machine block, and for the same
+    # reason spelled out below: a key that is not one of ssh's default
+    # filenames is never offered by plain `git fetch` over ssh, which dies with
+    # a bare "Permission denied (publickey)" for a key that authenticates fine
+    # under `ssh -i`. Every `git@github.com:` remote on a fresh box hits this,
+    # and nothing in the error names the cause. IdentitiesOnly keeps the pin
+    # deterministic once a second key exists.
+    #
+    # Opt out or extend per machine with `git_hosts` in [defaults]; an empty
+    # list emits nothing, for an instantiation whose forge pin belongs to
+    # somebody else.
+    if identity := defaults.get("identity_file"):
+        for forge in defaults.get("git_hosts", ["github.com"]):
+            lines.append(f"Host {forge}")
+            lines.append(f"    IdentityFile {identity}")
+            lines.append("    IdentitiesOnly yes")
+            lines.append("")
+
     for machine in machines(config):
         lines.append(f"Host {host_patterns(machine)}")
         lines.append(f"    HostName {machine.get('hostname') or machine['name']}")
@@ -203,6 +222,13 @@ def generate_forwards(config: dict) -> str:
     return "\n".join(lines)
 
 
+def cmd_identity(config: dict, _: argparse.Namespace) -> None:
+    """The default identity file, so install steps can check it exists without
+    re-parsing hosts.toml in shell. Prints nothing when none is configured."""
+    if identity := config.get("defaults", {}).get("identity_file"):
+        print(identity)
+
+
 def cmd_ssh_config(config: dict, args: argparse.Namespace) -> None:
     if args.forwards:
         print(generate_forwards(config))
@@ -220,6 +246,9 @@ def main() -> None:
 
     listing = sub.add_parser("list", help="list configured machines")
     listing.set_defaults(func=cmd_list)
+
+    identity = sub.add_parser("identity", help="print the default identity_file")
+    identity.set_defaults(func=cmd_identity)
 
     ssh_config = sub.add_parser("ssh-config", help="generate SSH config")
     group = ssh_config.add_mutually_exclusive_group(required=True)

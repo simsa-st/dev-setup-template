@@ -15,7 +15,11 @@ slots = 4    # how many concurrent instances of each service to forward
 #   Only needed when the key's filename is not one ssh tries by default.
 #   Without it, git and anything else invoking plain ssh never offers the key
 #   and fails with "Permission denied (publickey)" -- for a key that works fine
-#   under `ssh -i`. Can also be set per-machine below.
+#   under `ssh -i`. Can also be set per-machine below. The same key is pinned
+#   (with IdentitiesOnly) for the git forges in git_hosts, default github.com,
+#   because every `git@github.com:` remote fails the same way without it.
+# git_hosts = ["github.com"]
+#   Set to [] for an instantiation whose forge pin belongs to another setup.
 
 # service -> port prefix; remote = prefix*1000 + user_id*10 + slot
 [services]
