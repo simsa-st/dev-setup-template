@@ -227,9 +227,13 @@ step_git() {
     # Generated, not symlinked: the identity comes from profile.env, and a local
     # ~/.gitconfig may carry machine-specific credential helpers.
     backup_path "${XDG_CONFIG_HOME}/git/config"
-    sed -e "s|__GIT_USER_NAME__|${GIT_USER_NAME}|g" \
-        -e "s|__GIT_USER_EMAIL__|${GIT_USER_EMAIL}|g" \
-        "${DEV_SETUP_DIR}/config/git/config.template" > "${XDG_CONFIG_HOME}/git/config"
+    write_generated "${XDG_CONFIG_HOME}/git/config" \
+      sed -e "s|__GIT_USER_NAME__|${GIT_USER_NAME}|g" \
+          -e "s|__GIT_USER_EMAIL__|${GIT_USER_EMAIL}|g" \
+          "${DEV_SETUP_DIR}/config/git/config.template"
+    # mktemp makes the temp file 0600; this one is not a secret and was 0644
+    # under the old redirect.
+    chmod 644 "${XDG_CONFIG_HOME}/git/config"
   fi
 
   write_layer_gitconfig

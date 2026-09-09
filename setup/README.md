@@ -106,7 +106,11 @@ start corrupting dotfiles.
 7. **No repo paths in dotfiles.** `~/.zshrc` references `~/.config/...` only.
    Moving the checkout re-points symlinks; it does not edit `$HOME`.
 8. **Back up before replacing.** Anything real that a symlink would overwrite is
-   moved to `~/dev-setup-backups/<timestamp>/` (`link`, `backup_path`).
+   moved to `~/dev-setup-backups/<timestamp>/` (`link`, `backup_path`). A
+   symlink found at the destination is not backed up — nothing of yours lives
+   there — so everything that replaces a path must replace the *path* and not
+   write through the link. `link` and `write_generated` do; a bare `>` redirect
+   does not, and would truncate a file in whatever repo the link points into.
 9. **Never require root on Linux.** The difference that matters is not the
    distro but whether you own the box: a shared machine has no sudo, and
    everything has to land user-locally in `~/.config/bin`. A step may *use*

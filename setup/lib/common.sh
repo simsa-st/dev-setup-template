@@ -21,6 +21,11 @@ backup_dir() {
 }
 
 # Back up a real file/dir before it gets replaced by a symlink or generated copy.
+# A symlink is deliberately not backed up: nothing of the user's own lives at
+# that path, and whatever replaces it is expected to swap the link rather than
+# write through it. Everything that replaces a path must honour that. `link`
+# does, and so does `write_generated`; a bare `>` redirect does not -- it
+# follows the link and truncates a file this setup does not own.
 backup_path() { # <path>
   local path="$1"
   [ -e "${path}" ] || return 0
@@ -29,6 +34,32 @@ backup_path() { # <path>
   dest="$(backup_dir)/$(basename "${path}")"
   log "backing up ${path} -> ${dest}"
   mv "${path}" "${dest}"
+}
+
+# Write a generated file as the output of a command, replacing the path itself.
+# `cmd > "${dst}"` is the obvious form and the wrong one: it follows a symlink
+# and truncates the target. On a machine where the user already symlinks
+# ~/.ssh/config into their own dotfiles repo, that silently rewrites a file in
+# that repo, and backup_path -- which skips symlinks by design -- has nothing
+# to restore. Renaming a temp file over the destination replaces the path the
+# way link() does, and has the second virtue that a generator which fails
+# leaves the previous file intact instead of leaving a truncated one behind.
+# Callers keep their own backup_path policy: some back up unconditionally,
+# others only when the file is not last run's own output.
+write_generated() { # <destination> <command> [<args>...]
+  local dst="$1"; shift
+  local tmp
+  mkdir -p "$(dirname "${dst}")"
+  if [ -L "${dst}" ]; then
+    warn "replacing symlink ${dst} with a generated file; its target is untouched"
+    rm -f "${dst}"
+  fi
+  tmp="$(mktemp "${dst}.XXXXXX")"
+  if ! "$@" > "${tmp}"; then
+    rm -f "${tmp}"
+    die "failed to generate ${dst}"
+  fi
+  mv "${tmp}" "${dst}"
 }
 
 # Symlink repo config into place, backing up anything real that sits there.
