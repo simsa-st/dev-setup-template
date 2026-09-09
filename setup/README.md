@@ -149,7 +149,8 @@ setup/
     ├── skills/             shared skills, symlinked into both agents
     ├── prompts/            shared prompts / slash commands
     ├── claude/             becomes ~/.claude-<suffix> (and ~/.claude in full mode)
-    └── pi/                 becomes ~/.pi-<suffix> (and ~/.pi in full mode)
+    └── pi/                 becomes ~/.pi-<suffix> (and ~/.pi in full mode);
+                            its AGENTS.md is a symlink to claude/CLAUDE.md
 ```
 
 ## Helper scripts (`config/bin`, on `PATH`)
