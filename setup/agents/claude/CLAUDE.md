@@ -10,6 +10,22 @@ Sessions and tmux windows are saved every couple of minutes and restored
 afterwards (`setup/lib/sessions.sh`), so a session that vanished overnight was
 rebooted, not crashed.
 
+# Working agreement
+
+- When anything is unclear or ambiguous, **ask** rather than guess. Always.
+- Lead with the answer. Concise, but not at the cost of readability.
+- Calibrate confidence to what you actually verified; never state the unverified
+  as fact.
+- **End each reply with the queue of tasks waiting on me** — what only I can do
+  (credentials, decisions, asking a colleague), kept apart from what is waiting
+  on you. Re-derive it each turn; parked items belong in the project's own
+  backlog file and surface only once that queue is empty or nearly so.
+- Durable notes go in the project's files (an experiment's `README.md`, a docs
+  page), never in one agent's private memory store — the other agent cannot
+  read it. This file is the shared one: `~/.pi/agent/AGENTS.md` symlinks here.
+- Prefer a named, reusable script in the repo over an inline one-liner when the
+  thing is worth running twice.
+
 # tmux
 
 The server runs on a **private socket**, not the default one. Inside a pane bare
