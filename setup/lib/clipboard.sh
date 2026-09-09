@@ -108,9 +108,12 @@ check_git_ssh_key() {
   # `set -o pipefail`, where ssh's unconditional exit 1 becomes the pipeline's
   # status and a *successful* auth reads as a failure. That is not theoretical
   # -- it warned on every run of this step until the pipe went away.
+  # ConnectTimeout rather than `timeout 15 ssh ...`: coreutils' timeout does not
+  # exist on macOS, and "command not found" in the probe matched nothing, so the
+  # laptop warned about a key github had in fact accepted.
   have ssh || return 0
   local probe
-  probe="$(timeout 15 ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
+  probe="$(ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=15 \
       -T git@github.com 2>&1 || true)"
   case "${probe}" in
     *"successfully authenticated"*) return 0 ;;
