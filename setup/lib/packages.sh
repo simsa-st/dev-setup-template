@@ -43,8 +43,11 @@ install_release_binary() { # <name> <url> [<path-inside-archive>]
 # them. zsh in particular is not optional: step_shell dies without it, so a box
 # that has never had it cannot be set up at all. mosh is what makes `conn
 # --mosh` work, and without it a connection dies with the laptop lid.
+# git-lfs: config/git/config.template marks the lfs filter `required`, so in any
+# repo that tracks paths with it a commit fails without the binary. (Homebrew
+# already carries it in BREW_PACKAGES.)
 # TODO(bootstrap): trim/extend to what this environment actually needs.
-APT_PACKAGES=(zsh tmux mosh git curl unzip direnv fzf ripgrep jq build-essential)
+APT_PACKAGES=(zsh tmux mosh git git-lfs curl unzip direnv fzf ripgrep jq build-essential)
 
 apt_install_base() {
   have apt-get || return 0
