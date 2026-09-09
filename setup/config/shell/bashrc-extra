@@ -76,6 +76,15 @@ alias mzt="conn --mosh --tmux"
 
 # --- clipboard -----------------------------------------------------------
 alias lemonade="lemonade --host=localhost --port=${LEMONADE_RELAY_PORT:-64011}"
+# Neovim does not see the alias. Its built-in provider finds the lemonade
+# binary and calls it bare, i.e. against 127.0.0.1:2489 -- the laptop's port,
+# which on a remote host is nothing -- so yanks fail with "dial tcp ...:2489".
+# The nvim config's lemonade provider is opt-in on these two variables and
+# routes through the relay instead. Remote hosts only: the laptop has pbcopy.
+if [ "$(uname -s)" != "Darwin" ]; then
+  export LEMONADE_HOST_IP="${LEMONADE_HOST_IP:-localhost}"
+  export LEMONADE_PORT="${LEMONADE_PORT:-${LEMONADE_RELAY_PORT:-64011}}"
+fi
 alias lemonade-tunnels="pgrep -af 'autossh.*lemonade-tunnel'"
 alias lemonade-relay="pgrep -af 'lemonade-relay'"
 
