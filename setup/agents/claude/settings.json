@@ -8,5 +8,6 @@
   "permissions": {
     "allow": [],
     "deny": []
-  }
+  },
+  "tui": "fullscreen"
 }
