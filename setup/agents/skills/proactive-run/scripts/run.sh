@@ -48,6 +48,10 @@ RUN_WINDOW_CMD=\${SHELL:-/bin/bash}
 # RUN_WORK_DIR at a repo whose blast radius you accept.
 RUN_AGENT_BIN=claude
 RUN_AGENT_ARGS='--dangerously-skip-permissions'
+# Environment prefix for that command. A containerised run is commonly root,
+# and claude refuses to skip permissions as root unless IS_SANDBOX=1 says the
+# confinement was deliberate -- without it such a run dies at launch.
+RUN_AGENT_ENV='IS_SANDBOX=1'
 RUN_MODEL_FLAG=--model
 RUN_CONTINUE_FLAG=--continue
 

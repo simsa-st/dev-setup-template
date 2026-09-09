@@ -102,15 +102,14 @@ cla() {
   fi
 }
 
-# Same, with every permission prompt disabled -- for a throwaway or sandboxed
-# task where a prompt would just be in the way. IS_SANDBOX=1 is a marker for
-# the agent config, not a sandbox in itself: this grants the agent unconfirmed
-# use of every tool in whatever directory it starts in.
+# Same, with every permission prompt disabled -- for a throwaway task where a
+# prompt is only in the way. Nothing here is sandboxed: the agent gets
+# unconfirmed use of every tool in whatever directory it starts in.
 cls() {
   if [ "$#" -gt 0 ]; then
-    IS_SANDBOX=1 claude-pane "$1" --dangerously-skip-permissions "${@:2}"
+    claude-pane "$1" --dangerously-skip-permissions "${@:2}"
   else
-    IS_SANDBOX=1 claude --dangerously-skip-permissions
+    claude --dangerously-skip-permissions
   fi
 }
 

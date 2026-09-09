@@ -156,7 +156,11 @@ wait_for_agent_ui() { # <target> [timeout_s]
 agent_launch_cmd() { # <model> [extra-args...]
   local model=$1
   shift
-  printf '%s %s %s %s' "${RUN_AGENT_BIN}" "${RUN_MODEL_FLAG} ${model}" "${RUN_AGENT_ARGS}" "$*"
+  # RUN_AGENT_ENV is a prefix rather than an export: this command is typed into
+  # a shell by send-keys, and a containerised run's shell is not this process.
+  # Unset in a run.env written before it existed, hence the :+ guard.
+  printf '%s%s %s %s %s' "${RUN_AGENT_ENV:+${RUN_AGENT_ENV} }" \
+    "${RUN_AGENT_BIN}" "${RUN_MODEL_FLAG} ${model}" "${RUN_AGENT_ARGS}" "$*"
 }
 
 # Open a window running a shell in the run's working environment. RUN_WINDOW_CMD
