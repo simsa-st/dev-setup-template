@@ -42,6 +42,13 @@ the session be resumed into the same pane after a reboot; `claude-panes list`
 shows the tracked ones. A long-lived session started as bare `claude` has no
 name and will not come back.
 
+# Secrets
+
+Everything under `setup/config/secrets/` except the README and the `*.example`
+files is gitignored and is a local secrets file: never reveal its contents, in
+output or in a commit. `setup/config/secrets/README.md` says how secrets reach a
+machine.
+
 TODO(bootstrap): add whatever else every session on this machine should know
 before its first tool call — where the repos are, which commands are expensive,
 what must never run here.
