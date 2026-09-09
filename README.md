@@ -31,7 +31,9 @@ as working locally, which is the point.
 a personal repo, a repo for each job — and they share their design without
 sharing their contents. Nothing employer-specific ever enters the personal one;
 nothing personal ever enters a work one; and a fix made in either can be carried
-across deliberately, as a change you reviewed rather than a merge.
+across deliberately, as a change you reviewed rather than a merge. The one
+thing every instantiation shares is the editor: there is a single neovim config,
+yours, cloned by all of them, and nothing employer-specific is committed to it.
 
 Two setups on **one machine** is the case this is really built for, because it
 is where naive dotfile repos break: both want to own `~/.zshrc`, `~/.tmux.conf`,

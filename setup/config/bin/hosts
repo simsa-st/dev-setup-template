@@ -14,6 +14,7 @@ on one shared machine do not collide.
 
     hosts resolve <alias>            # -> name, hostname, mosh port range
     hosts identity                   # -> the default identity_file
+    hosts git-remotes                # -> `<remote> <ssh-host>` per machine
     hosts ssh-config --base          # -> ~/.ssh/config           (full mode)
     hosts ssh-config --fragment      # -> ~/.ssh/config.d/<suffix>-hosts (layer)
     hosts ssh-config --forwards      # -> ~/.ssh/config.d/generated-port-forwards
@@ -80,6 +81,21 @@ def cmd_list(config: dict, _: argparse.Namespace) -> None:
     for machine in machines(config):
         aliases = ", ".join(machine.get("aliases", [])) or "-"
         print(f"{machine['name']:<20} id={machine['id']:<3} aliases: {aliases}")
+
+
+def short_name(machine: dict) -> str:
+    """The name you type: the first alias, or the machine name when it has none.
+    `conn <x>` and `git pull <x> master` should agree on what `<x>` is."""
+    aliases = machine.get("aliases", [])
+    return aliases[0] if aliases else machine["name"]
+
+
+def cmd_git_remotes(config: dict, _: argparse.Namespace) -> None:
+    """One `<remote> <ssh-host>` pair per machine, for adding each machine's clone
+    of a repo as a git remote. The remote is the short name; the ssh host is the
+    machine name, which the generated SSH config always carries."""
+    for machine in machines(config):
+        print(f"{short_name(machine)} {machine['name']}")
 
 
 def host_patterns(machine: dict, *, fwd_only: bool = False) -> str:
@@ -249,6 +265,9 @@ def main() -> None:
 
     identity = sub.add_parser("identity", help="print the default identity_file")
     identity.set_defaults(func=cmd_identity)
+
+    remotes = sub.add_parser("git-remotes", help="print `<remote> <ssh-host>` per machine")
+    remotes.set_defaults(func=cmd_git_remotes)
 
     ssh_config = sub.add_parser("ssh-config", help="generate SSH config")
     group = ssh_config.add_mutually_exclusive_group(required=True)

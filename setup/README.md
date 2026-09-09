@@ -58,7 +58,7 @@ Steps run in this order, each one a `step_<name>` function in `lib/`:
 | `tmux` | full | tpm + `tmux.conf` symlink |
 | `git` | both | full: render `~/.config/git/config`; layer: an `includeIf` in `~/.gitconfig` giving `${LAYER_ROOT}` this identity |
 | `tools` | full | uv, node/nvm, repo pre-commit hook |
-| `nvim` | both | clone/symlink the config repo; full mode also installs neovim and the tree-sitter CLI |
+| `nvim` | both | clone/symlink the config repo with its own git identity; on the laptop, each machine in `hosts.toml` becomes a remote of the clone; full mode also installs neovim and the tree-sitter CLI |
 | `agents` | both | symlink agent config; full mode also installs the binaries |
 | `env` | both | `bashrc-layer`, the `~/.zshrc` block, `${LAYER_ROOT}/.envrc` |
 | `sessions` | full | timer that saves the tmux layout and the agent name map |
@@ -158,13 +158,49 @@ setup/
 | Command | Purpose |
 |---|---|
 | `conn [--tmux] [--mosh] [--fwd] <host>` | connect, with clipboard tunnel and optional tmux/mosh |
-| `hosts resolve\|list\|ssh-config` | the machine table: aliases and generated SSH config |
+| `hosts resolve\|list\|identity\|git-remotes\|ssh-config` | the machine table: aliases, the default key, `<remote> <ssh-host>` pairs, generated SSH config |
 | `clipboard-copy` | stdin → local clipboard from anywhere (pbcopy → lemonade → OSC 52) |
 | `lemonade-server`, `lemonade-tunnel`, `lemonade-relay` | the clipboard path |
 | `tmux-say <tmux-target> <text>` | say something to an agent in another window |
 | `claude-pane <name> [args]` | start/resume a Claude session under a stable Remote Control name |
 | `claude-panes sync\|restore\|list\|bind\|forget` | the name → conversation map behind it |
 | `resume-agent <delay> <tmux-target> [text]` | poke a waiting agent later |
+
+## The neovim config
+
+There is **one** nvim config, yours, and every instantiation clones the same
+repo (`NVIM_CONFIG_REPO`): the editor is personal, and nothing
+employer-specific is committed there. Three things follow, all in `step_nvim`
+and all no-ops when the variable behind them is empty:
+
+- **Identity.** In a work instantiation `GIT_USER_EMAIL` is the employer's, so
+  `NVIM_CONFIG_GIT_EMAIL` is written into the clone's local config and a commit
+  made there carries the account the repo belongs to.
+- **Pulling a box's commits.** A commit made on a box whose `github.com` key is
+  not on that account cannot be pushed from the box. The laptop's clone gets
+  every machine in `hosts.toml` as a remote, named like its `conn` alias, so
+  from the laptop it is `git pull --ff-only <alias> master && git push`.
+- **Pushing from the laptop** when `github.com` is pinned to another key. The
+  personal key goes under its own alias, one-time and per laptop (a key never
+  lives in this repo), and `NVIM_CONFIG_PUSH_URL` names it:
+
+  ```bash
+  ssh-keygen -t ed25519 -C you@example.com -f ~/.ssh/id_ed25519_personal
+  cat > ~/.ssh/config.d/personal-github << 'EOF'
+  Host github-personal
+    HostName github.com
+    User git
+    IdentityFile ~/.ssh/id_ed25519_personal
+    IdentitiesOnly yes
+  EOF
+  ssh -T github-personal                        # "Hi <you>!"
+  ./setup/install.sh --only nvim                # sets the clone's push URL
+  ```
+
+  Fetch stays on the anonymous HTTPS URL, and the push URL is set only where
+  `ssh -G github-personal` resolves to github.com — so a box without the key
+  still pulls, a fresh laptop does not fail on an alias that does not exist yet,
+  and the remote converges either way.
 
 ## Clipboard
 
