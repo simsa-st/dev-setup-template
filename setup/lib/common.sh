@@ -46,6 +46,13 @@ backup_path() { # <path>
 # leaves the previous file intact instead of leaving a truncated one behind.
 # Callers keep their own backup_path policy: some back up unconditionally,
 # others only when the file is not last run's own output.
+#
+# The result is 0644 unless the caller tightens it afterwards. That default is
+# deliberate: mktemp creates 0600 and the mode survives the rename, so a caller
+# who does not think about modes would silently get a *more* restrictive file
+# than the `>` redirect this replaces produced -- a difference nothing fails on
+# and nobody looks for. Forgetting now costs a world-readable non-secret, which
+# is the harmless direction to be wrong in.
 write_generated() { # <destination> <command> [<args>...]
   local dst="$1"; shift
   local tmp
@@ -59,6 +66,9 @@ write_generated() { # <destination> <command> [<args>...]
     rm -f "${tmp}"
     die "failed to generate ${dst}"
   fi
+  # Set before the rename, so a caller that chmods down afterwards never leaves
+  # the destination itself briefly readable.
+  chmod 644 "${tmp}"
   mv "${tmp}" "${dst}"
 }
 
