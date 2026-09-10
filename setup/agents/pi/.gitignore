@@ -6,7 +6,9 @@
 !agent
 agent/*
 !agent/AGENTS.md
-!agent/settings.json
+# Not agent/settings.json: pi writes lastChangelogVersion and the installed
+# packages into it. step_agents renders it from this base.
+!agent/settings.base.json
 !agent/models.json
 !agent/prompts
 !agent/skills

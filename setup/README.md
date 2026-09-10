@@ -59,7 +59,7 @@ Steps run in this order, each one a `step_<name>` function in `lib/`:
 | `git` | both | full: render `~/.config/git/config`; layer: an `includeIf` in `~/.gitconfig` giving `${LAYER_ROOT}` this identity |
 | `tools` | full | uv, node/nvm, repo pre-commit hook |
 | `nvim` | both | clone/symlink the config repo with its own git identity; on the laptop, each machine in `hosts.toml` becomes a remote of the clone; full mode also installs neovim and the tree-sitter CLI |
-| `agents` | both | symlink agent config; full mode also installs the binaries |
+| `agents` | both | symlink agent config; render each agent's `settings.json` from its `settings.base.json`; full mode also installs the binaries |
 | `env` | both | `bashrc-layer`, the `~/.zshrc` block, `${LAYER_ROOT}/.envrc` |
 | `sessions` | full | timer that saves the tmux layout and the agent name map |
 | `clipboard` | full | lemonade server (macOS) or client + host IP (Linux) |
@@ -321,6 +321,24 @@ Both agents keep their entire config directory in this repo (`~/.claude` and
 versioned and identical on every machine. Runtime state is excluded by a
 whitelist `.gitignore` in each, so new runtime files never land in git by
 accident.
+
+`settings.json` is the awkward one, because it is *both*: this repo owns the
+model, the status line and the permission allowlist, and the agent writes its
+own keys into the same file — Claude Code's `skipDangerousModePermissionPrompt`
+once you accept the dangerous-mode warning, pi's `lastChangelogVersion` on every
+upgrade and the packages `step_agents` installs. Tracked, that leaves any
+machine which has ever run an agent permanently dirty, and a pull touching the
+file conflicts — leaving conflict markers in a file Claude Code has to parse to
+start.
+
+So the tracked half is `settings.base.json` and the live `settings.json` is
+gitignored. `step_agents` merges base over live on every run
+(`merge_agent_settings`): base keys win, so an edit converges on every machine
+like any other step; keys only the live file has are kept. The merge is shallow
+— `permissions` is defined wholesale here, not accumulated from both sides — and
+a live file that will not parse is moved to `.unparsable` and rebuilt rather
+than merged into. Removing a key from the base does not remove it from the live
+file; delete it there, or delete the live file and let the step rewrite it.
 
 Skills live once in `agents/skills/` and are symlinked into both agents' skill
 directories; write a skill once and both see it. Shared prompts in

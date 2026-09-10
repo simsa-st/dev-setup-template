@@ -4,7 +4,9 @@
 # accident. `*` matches at every depth, hence the explicit `/**` re-includes.
 *
 !.gitignore
-!settings.json
+# settings.json itself is NOT tracked: Claude Code writes to it (notably
+# skipDangerousModePermissionPrompt). step_agents renders it from this base.
+!settings.base.json
 !statusline.sh
 !CLAUDE.md
 !commands
