@@ -86,12 +86,16 @@ source "${DEV_SETUP_DIR}/lib/sessions.sh"
 source "${DEV_SETUP_DIR}/lib/clipboard.sh"
 
 # Everything this installer installs user-locally lands in ${XDG_CONFIG_HOME}/bin
-# (uv, node shims, delta, jq, the helper scripts). Put it on PATH here rather
-# than relying on step_shell, which sources bashrc-extra as a side effect and is
-# both full-mode-only and skippable: `--only project` otherwise ran with a
-# different PATH than a full install and reported tools "not installed" that
-# were sitting right there.
-export PATH="${XDG_CONFIG_HOME:-${HOME}/.config}/bin:${PATH}"
+# (uv, node shims, delta, jq, the helper scripts) or, for anything that places
+# itself, ~/.local/bin -- which is where Claude Code's native install goes. Put
+# both on PATH here rather than relying on step_shell, which sources bashrc-extra
+# as a side effect and is both full-mode-only and skippable: `--only project`
+# otherwise ran with a different PATH than a full install and reported tools "not
+# installed" that were sitting right there. ~/.local/bin was the same bug one
+# directory over: `have claude` was false under `--only agents` and true in a
+# full run, so the agents step re-ran the Claude Code installer over a perfectly
+# good install every time it was invoked on its own.
+export PATH="${XDG_CONFIG_HOME:-${HOME}/.config}/bin:${HOME}/.local/bin:${PATH}"
 
 resolve_mode "${MODE}"
 load_profile
