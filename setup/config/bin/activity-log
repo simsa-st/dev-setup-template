@@ -1,0 +1,232 @@
+#!/usr/bin/env python3
+"""Activity breadcrumbs. No prompt bodies, credentials, or inferred durations.
+
+    activity-log add --category work --source prompt --summary 'project · review results'
+    activity-log add --category personal --source manual --summary 'Sent note'
+    activity-log export --offset 0            # byte offset for incremental pull
+    activity-log sync                         # Mac: import local and configured SSH boxes
+    activity-log staged --after 0             # JSONL for a separate consumer
+
+The append-only machine spool is never pruned by sync. The Mac's SQLite store
+commits imported events and byte cursors together; a failed pull is retried.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import fcntl
+import json
+import os
+import sqlite3
+import subprocess
+import sys
+import uuid
+from pathlib import Path
+
+STATE = Path(os.environ.get("ACTIVITY_LOG_STATE", str(Path.home() / ".local/state/activity-log")))
+SPOOL = STATE / "events.jsonl"
+DB = STATE / "import.sqlite3"
+MAX_BATCH = 4 * 1024 * 1024
+
+
+def stamp() -> str:
+    return dt.datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def pane_locator() -> dict[str, str]:
+    result = {}
+    if pane := os.environ.get("TMUX_PANE"):
+        result["pane"] = pane
+        try:
+            proc = subprocess.run(
+                [
+                    "tmux",
+                    "display-message",
+                    "-p",
+                    "-t",
+                    pane,
+                    "#{session_name}:#{window_index} #{window_name}",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=2,
+                check=True,
+            )
+            result["window"] = proc.stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            pass
+    return result
+
+
+def add(args: argparse.Namespace) -> None:
+    summary = args.summary.strip()
+    if not summary or "\n" in summary or len(summary) > 240:
+        raise ValueError("summary must be one line of at most 240 characters")
+    event = {
+        "id": str(uuid.uuid4()),
+        "at": stamp(),
+        "category": args.category,
+        "source": args.source,
+        "summary": summary,
+        "machine": os.uname().nodename,
+        "locator": pane_locator(),
+    }
+    if args.url:
+        if "\n" in args.url or len(args.url) > 2048:
+            raise ValueError("URL must be one line of at most 2048 characters")
+        event["url"] = args.url
+    STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
+    line = (json.dumps(event, ensure_ascii=False) + "\n").encode()
+    # O_APPEND under a lock prevents concurrent agents interleaving JSON lines.
+    with SPOOL.open("ab") as handle:
+        os.chmod(SPOOL, 0o600)
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        handle.write(line)
+        handle.flush()
+        os.fsync(handle.fileno())
+    print(f"activity-log: {event['at']} [{args.category}] {summary} ({event['id']})")
+
+
+def export(offset: int) -> None:
+    if offset < 0:
+        raise ValueError("offset must be nonnegative")
+    if not SPOOL.exists():
+        if offset:
+            raise ValueError("spool missing after previously imported bytes")
+        return
+    with SPOOL.open("rb") as handle:
+        fcntl.flock(handle, fcntl.LOCK_SH)
+        handle.seek(0, os.SEEK_END)
+        end = handle.tell()
+        if offset > end:
+            raise ValueError("spool shrank; refusing to skip events")
+        handle.seek(offset)
+        data = handle.read(MAX_BATCH)
+        if data and not data.endswith(b"\n"):
+            data = data[: data.rfind(b"\n") + 1]
+        sys.stdout.buffer.write(data)
+
+
+def database() -> sqlite3.Connection:
+    STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
+    conn = sqlite3.connect(DB)
+    os.chmod(DB, 0o600)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS events (seq INTEGER PRIMARY KEY, id TEXT UNIQUE NOT NULL, body TEXT NOT NULL)"
+    )
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS cursors (machine TEXT PRIMARY KEY, bytes INTEGER NOT NULL)"
+    )
+    return conn
+
+
+def ingest(conn: sqlite3.Connection, machine: str, data: bytes) -> int:
+    if data and not data.endswith(b"\n"):
+        raise ValueError("incomplete event batch")
+    offset = conn.execute("SELECT bytes FROM cursors WHERE machine=?", (machine,)).fetchone()
+    offset = offset[0] if offset else 0
+    with conn:
+        for line in data.splitlines():
+            event = json.loads(line)
+            if (
+                not isinstance(event, dict)
+                or not isinstance(event.get("id"), str)
+                or event.get("category") not in ("work", "personal")
+                or not isinstance(event.get("at"), str)
+                or not isinstance(event.get("summary"), str)
+            ):
+                raise ValueError("invalid event in spool")
+            conn.execute(
+                "INSERT OR IGNORE INTO events (id, body) VALUES (?, ?)",
+                (event["id"], line.decode("utf-8")),
+            )
+        conn.execute(
+            "INSERT INTO cursors VALUES (?, ?) ON CONFLICT(machine) DO UPDATE SET bytes=excluded.bytes",
+            (machine, offset + len(data)),
+        )
+    return len(data.splitlines())
+
+
+def hosts() -> list[str]:
+    # SSH's existing machine inventory. Never probe unknown hosts or start a box.
+    import tomllib
+
+    config = Path(
+        os.environ.get(
+            "DEV_HOSTS_FILE", str(Path(__file__).resolve().parent.parent / "ssh/hosts.toml")
+        )
+    )
+    with config.open("rb") as handle:
+        return [m["name"] for m in tomllib.load(handle).get("machines", [])]
+
+
+def sync() -> None:
+    if sys.platform != "darwin":
+        raise ValueError("sync is Mac-only; boxes only append and export")
+    with database() as conn:
+        sources = [(f"local:{os.uname().nodename}", None)] + [(h, h) for h in hosts()]
+        for key, host in sources:
+            offset = conn.execute("SELECT bytes FROM cursors WHERE machine=?", (key,)).fetchone()
+            offset = offset[0] if offset else 0
+            cmd = (
+                [sys.executable, str(Path(__file__).resolve()), "export", "--offset", str(offset)]
+                if host is None
+                else [
+                    "ssh",
+                    "-T",
+                    "-o",
+                    "BatchMode=yes",
+                    "-o",
+                    "ConnectTimeout=5",
+                    "-o",
+                    "ConnectionAttempts=1",
+                    host,
+                    "~/.config/bin/activity-log",
+                    "export",
+                    "--offset",
+                    str(offset),
+                ]
+            )
+            try:
+                proc = subprocess.run(cmd, capture_output=True, timeout=15, check=True)
+                count = ingest(conn, key, proc.stdout)
+                if count:
+                    print(f"{key}: imported {count} events")
+            except (OSError, subprocess.SubprocessError, ValueError) as exc:
+                print(f"activity-log: {key}: {exc}", file=sys.stderr)
+
+
+def staged(after: int) -> None:
+    with database() as conn:
+        for seq, body in conn.execute(
+            "SELECT seq, body FROM events WHERE seq>? ORDER BY seq", (after,)
+        ):
+            print(json.dumps({"seq": seq, "event": json.loads(body)}, ensure_ascii=False))
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest="command", required=True)
+    entry = sub.add_parser("add")
+    entry.add_argument("--category", choices=["work", "personal"], required=True)
+    entry.add_argument("--source", choices=["prompt", "manual"], required=True)
+    entry.add_argument("--summary", required=True)
+    entry.add_argument("--url")
+    entry.set_defaults(run=add)
+    pull = sub.add_parser("export")
+    pull.add_argument("--offset", type=int, required=True)
+    pull.set_defaults(run=lambda args: export(args.offset))
+    sub.add_parser("sync").set_defaults(run=lambda _: sync())
+    view = sub.add_parser("staged")
+    view.add_argument("--after", type=int, default=0)
+    view.set_defaults(run=lambda args: staged(args.after))
+    args = parser.parse_args()
+    try:
+        args.run(args)
+    except (ValueError, sqlite3.Error) as exc:
+        parser.exit(1, f"activity-log: {exc}\n")
+
+
+if __name__ == "__main__":
+    main()

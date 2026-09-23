@@ -40,9 +40,26 @@ The server runs on a **private socket**, not the default one. Inside a pane bare
 Windows are named after the conversation in them, so `list-windows -a` is the
 map of who is doing what.
 
+# Activity breadcrumbs (opt-in)
+
+If this machine's setup has enabled `ACTIVITY_LOG_CATEGORY` (`work` or
+`personal`), run `activity-log add --category "$ACTIVITY_LOG_CATEGORY"
+--source prompt --summary '<project · few-word goal>'` immediately on each
+human prompt. Log the agent's execution time, not an inferred duration. Never
+include the prompt body or secrets. Skip `[agent]` messages, scheduled nudges
+and uncertain provenance; ask if unclear. This is not a CLI input hook, so a
+prompt not processed by the agent cannot be captured. If the command fails,
+say so rather than claiming it was logged. An instantiation must deliberately
+configure the category and any vault routing; never infer it from the cwd.
+
 # Talking to an agent in another window
 
     tmux-say work:2 'take a look at the pacing table'
+
+Every agent-originated prompt, including wake messages, starts `[agent]`.
+`tmux-say` and proactive-run's sender add it automatically; other transports
+must add it themselves. Human prompts must not use the marker. It is a
+provenance convention, not authentication.
 
 Use it rather than raw `send-keys`: it sends the text literally and the Enter as
 a separate keystroke after a pause, both of which are needed and neither of

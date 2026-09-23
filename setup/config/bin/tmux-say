@@ -29,7 +29,10 @@ shift
 tmux_cmd=(tmux)
 [ -n "${TMUX:-}" ] || tmux_cmd=(tmux -S "${TMUX_SOCKET:-${HOME}/tmp-tmux-socket}")
 
-"${tmux_cmd[@]}" send-keys -t "${target}" -l "$*"
+# Make agent origin visible to the receiving session (not authentication).
+message="$*"
+[[ "${message}" == \[agent\]* ]] || message="[agent] ${message}"
+"${tmux_cmd[@]}" send-keys -t "${target}" -l "${message}"
 sleep 2
 "${tmux_cmd[@]}" send-keys -t "${target}" C-m
 echo "sent to ${target}"

@@ -130,7 +130,9 @@ send_to_agent() { # <target> <text...>
 send_to_agent_now() { # <target> <text...>
   local target=$1
   shift
-  tmx send-keys -t "${target}" -l "$*"
+  local message="$*"
+  [[ "${message}" == \[agent\]* ]] || message="[agent] ${message}"
+  tmx send-keys -t "${target}" -l "${message}"
   sleep 2
   tmx send-keys -t "${target}" C-m
 }

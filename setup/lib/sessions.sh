@@ -26,7 +26,7 @@ step_sessions() {
   # machine cannot leave the scheduler pointing at a path that does not exist
   # yet (systemd reports that as 203/EXEC, launchd as a silent no-op).
   local script
-  for script in claude-pane claude-panes tmux-persist; do
+  for script in claude-pane claude-panes tmux-persist activity-log; do
     chmod +x "${DEV_SETUP_DIR}/config/bin/${script}"
     ln -sfn "${DEV_SETUP_DIR}/config/bin/${script}" "${XDG_CONFIG_HOME}/bin/${script}"
   done
@@ -103,4 +103,23 @@ sessions_install_launchd() {
     return 0
   fi
   log "sessions: ${label} every ${TMUX_PERSIST_INTERVAL}s, log ${logfile}"
+
+  # Only a full-mode Mac polls configured machines. Layer mode leaves its
+  # owner's scheduler alone; it may opt into a separate layer-specific job.
+  local sync_label="dev.setup.activity-log-sync"
+  local sync_plist="${HOME}/Library/LaunchAgents/${sync_label}.plist"
+  local sync_log="${HOME}/Library/Logs/${sync_label}.log"
+  if [ -z "${ACTIVITY_LOG_CATEGORY:-}" ]; then
+    launchctl bootout "${domain}/${sync_label}" > /dev/null 2>&1 || true
+    rm -f "${sync_plist}"
+    return 0
+  fi
+  case "${ACTIVITY_LOG_CATEGORY}" in work | personal) ;; *) die "invalid ACTIVITY_LOG_CATEGORY" ;; esac
+  sed -e "s|__BIN_DIR__|${XDG_CONFIG_HOME}/bin|g" \
+      -e "s|__PATH__|${SESSIONS_UNIT_PATH}|g" \
+      -e "s|__LOG__|${sync_log}|g" \
+      "${DEV_SETUP_DIR}/config/launchd/activity-log-sync.plist.template" > "${sync_plist}"
+  launchctl bootout "${domain}/${sync_label}" > /dev/null 2>&1 || true
+  launchctl bootstrap "${domain}" "${sync_plist}" ||
+    warn "sessions: launchctl bootstrap failed for ${sync_plist}"
 }

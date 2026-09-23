@@ -61,7 +61,7 @@ Steps run in this order, each one a `step_<name>` function in `lib/`:
 | `nvim` | both | clone/symlink the config repo with its own git identity; on the laptop, each machine in `hosts.toml` becomes a remote of the clone; full mode also installs neovim and the tree-sitter CLI |
 | `agents` | both | symlink agent config; render each agent's `settings.json` from its `settings.base.json`; full mode also installs the binaries |
 | `env` | both | `bashrc-layer`, the `~/.zshrc` block, `${LAYER_ROOT}/.envrc` |
-| `sessions` | full | timer that saves the tmux layout and the agent name map |
+| `sessions` | full | timer that saves tmux state; on an opted-in macOS setup, a separate 15-minute activity sync |
 | `clipboard` | full | lemonade server (macOS) or client + host IP (Linux) |
 | `ssh` | both | hosts from `hosts.toml`: whole config, or a `config.d` fragment. Pins `github.com` to `[defaults].identity_file` (`git_hosts` to change the list) and warns when that key is missing or not accepted by github — without the pin, `git@github.com:` remotes fail on a fresh box |
 | `finish` | both | print what to run next |
@@ -165,7 +165,8 @@ setup/
 | `hosts resolve\|list\|identity\|git-remotes\|ssh-config` | the machine table: aliases, the default key, `<remote> <ssh-host>` pairs, generated SSH config |
 | `clipboard-copy` | stdin → local clipboard from anywhere (pbcopy → lemonade → OSC 52) |
 | `lemonade-server`, `lemonade-tunnel`, `lemonade-relay` | the clipboard path |
-| `tmux-say <tmux-target> <text>` | say something to an agent in another window |
+| `tmux-say <tmux-target> <text>` | say something to an agent in another window, marked `[agent]` |
+| `activity-log add\|export\|sync\|staged` | optional activity breadcrumbs; see `docs/activity-log.md` |
 | `claude-pane <name> [args]` | start/resume a Claude session under a stable Remote Control name |
 | `claude-panes sync\|restore\|list\|bind\|forget` | the name → conversation map behind it |
 | `resume-agent <delay> <tmux-target> [text]` | poke a waiting agent later |
