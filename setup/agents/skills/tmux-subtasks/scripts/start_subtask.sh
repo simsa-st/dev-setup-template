@@ -32,6 +32,8 @@ prompt_file="${task_dir}/prompts/${name}.md"
 result_file="${task_dir}/results/${name}.md"
 
 cat > "${prompt_file}" << EOF
+[agent] Delegated subtask — this prompt was launched by another process, not typed by the human.
+
 ${prompt}
 
 ---
