@@ -12,3 +12,5 @@
 !commands
 !skills
 !skills/**
+# Claude Code downloads account-synced skills here; do not version its cache.
+skills/synced/

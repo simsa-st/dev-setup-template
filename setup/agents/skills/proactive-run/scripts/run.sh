@@ -51,21 +51,52 @@ RUN_AGENT_ARGS='--dangerously-skip-permissions'
 # Environment prefix for that command. A containerised run is commonly root,
 # and claude refuses to skip permissions as root unless IS_SANDBOX=1 says the
 # confinement was deliberate -- without it such a run dies at launch.
-RUN_AGENT_ENV='IS_SANDBOX=1'
+# DISABLE_AUTOUPDATER=1 stops Claude Code's own updater: a worker that
+# self-updates mid-run parks at "Update installed - Restart to update" with an
+# empty prompt, which liveness reads as idle. (DISABLE_AUTO_UPDATE is the
+# oh-my-zsh switch, a different prompt -- heartbeat.sh sets that one.)
+RUN_AGENT_ENV='IS_SANDBOX=1 DISABLE_AUTOUPDATER=1'
 RUN_MODEL_FLAG=--model
 RUN_CONTINUE_FLAG=--continue
 
 # name:model — each role gets a window named after it. Keep in sync with
 # PROTOCOL.md; drop roles you do not need.
+# A role may run on pi instead: 'name:pi/<provider>/<model>' (e.g.
+# pi/openai-codex/<model>); workers take the same spelling as their model.
 RUN_ROLES='heartbeat:TODO-cheap-model manager:TODO-model tester:TODO-model reviewer:TODO-model evaluator:TODO-model'
 
 # Deadline, and the reset of the usage window if one falls inside the run.
 RUN_DEADLINE_UTC=TODO-YYYY-MM-DDTHH:MM:SSZ
 RUN_QUOTA_RESET_UTC=
 RUN_BUDGET_GOAL_PERCENT=95
+# Share of the FRESH long window allowed after RUN_QUOTA_RESET_UTC (default: same goal).
+RUN_BUDGET_GOAL_PERCENT_AFTER_RESET=
 RUN_BUDGET_BASELINE_PERCENT=0
+RUN_SHORT_WINDOW_MAX_PERCENT=90
+# 1 only when the human has said the run may continue on extra-usage credits;
+# time_status.sh and the heartbeat prompt then stop advising to decline them.
+RUN_ALLOW_CREDITS=0
 RUN_HEARTBEAT_INTERVAL_S=3600
 RUN_RATE_LIMIT_SNAPSHOT=/tmp/claude-rate-limits.json
+
+# pi (Codex subscription) — usage via scripts/codex_usage.sh; cap on either window.
+# Empty uses this pi agent directory's ignored usage file (keeps setups apart).
+RUN_CODEX_SNAPSHOT=
+RUN_CODEX_MAX_PERCENT=95
+
+# Any external per-call paid service the run drives programmatically (a
+# proxied LLM key, a paid search/data API) needs its own approved spend cap
+# and a script that snapshots spend against it — see the comment in
+# time_status.sh for the snapshot shape it expects. Leave both empty to skip
+# the meter, but then nothing may call that service: unmetered spend must not
+# happen, and only a human may authorise going over the cap.
+RUN_EXTERNAL_SPEND_SNAPSHOT=
+RUN_EXTERNAL_SPEND_CAP_USD=
+
+# System monitor (scripts/sysmon.sh): alert thresholds.
+RUN_MIN_MEM_AVAIL_MB=1500
+RUN_MIN_DISK_FREE_GB=5
+RUN_SYSMON_INTERVAL_S=120
 EOF
   fi
 
@@ -85,6 +116,10 @@ cmd_start() {
   source "${SKILL_DIR}/scripts/run_env.sh"
   local role
 
+  # The run owns its session outright: its windows are named after roles and
+  # workers, agents address each other by window name, and the heartbeat and
+  # the stop script kill and create windows in it. Sharing a session with a
+  # human's own windows is how a stray window gets killed or nudged.
   if ! tmx has-session -t "${RUN_SESSION}" 2> /dev/null; then
     tmx new-session -d -s "${RUN_SESSION}" -n "$(role_names | head -n1)" "${RUN_WINDOW_CMD}"
     for role in $(role_names | tail -n +2); do
@@ -116,6 +151,16 @@ cmd_start() {
     echo "heartbeat loop started (pid $(cat "${pid_file}"))"
   fi
 
+  local sm_pid="${RUN_DIR}/meta/sysmon.pid"
+  if [ -f "${sm_pid}" ] && proc_alive "$(cat "${sm_pid}")"; then
+    echo "sysmon already running (pid $(cat "${sm_pid}"))"
+  else
+    DETACH_LOG="${RUN_DIR}/meta/sysmon.err"
+    export DETACH_LOG
+    detach "${SKILL_DIR}/scripts/sysmon.sh" > "${sm_pid}"
+    echo "system monitor started (pid $(cat "${sm_pid}"))"
+  fi
+
   "${SKILL_DIR}/scripts/time_status.sh"
   echo "watch it: tmux -S ${TMUX_SOCKET} attach -t ${RUN_SESSION}"
 }
@@ -124,7 +169,7 @@ cmd_stop() {
   # shellcheck source=run_env.sh
   source "${SKILL_DIR}/scripts/run_env.sh"
   local pid_file pid
-  for pid_file in "${RUN_DIR}"/meta/heartbeat.pid "${RUN_DIR}"/meta/wakeup_*.pid; do
+  for pid_file in "${RUN_DIR}"/meta/heartbeat.pid "${RUN_DIR}"/meta/sysmon.pid "${RUN_DIR}"/meta/wakeup_*.pid; do
     [ -f "${pid_file}" ] || continue
     pid=$(cat "${pid_file}")
     if proc_alive "${pid}"; then

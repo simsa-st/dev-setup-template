@@ -6,7 +6,9 @@
 #   agent.sh check <role>     print STATE=<RUNNING|IDLE|LIMIT|STOPPED|NO_WINDOW> + pane tail
 #   agent.sh stop <role>      clean exit, then keep the window (workers: window is killed)
 #
-# <role> is a name from RUN_ROLES, or a worker window name (cw-<name>).
+# <role> is a name from RUN_ROLES, or a worker window name (cw-<name>). A
+# worker's model is remembered in meta/model_<window> by worker.sh, so restart
+# and stop know which CLI (Claude or pi) is in the window.
 set -uo pipefail
 SKILL_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 # shellcheck source=run_env.sh
@@ -15,38 +17,53 @@ source "${SKILL_DIR}/scripts/run_env.sh"
 action=${1:?usage: agent.sh start|restart|check|stop <role>}
 role=${2:?role or window name required}
 target=$(target_of "${role}")
+model=$(role_model "${role}" || cat "${RUN_DIR}/meta/model_${role}" 2> /dev/null || role_model manager)
 
-# Exit the agent currently in the window and verify it is gone: a missed /exit
+# Exit the agent currently in the window and verify it is gone: a missed exit
 # turns the next launch command into a chat message for the old agent.
 exit_agent() {
   local pane
   pane=$(tmx capture-pane -p -t "${target}" 2> /dev/null || true)
-  grep -qE "shift\+tab to cycle|esc to interrupt" <<< "${pane}" || return 0
+  grep -qE "shift\+tab to cycle|esc to interrupt|\((sub|auto)\)" <<< "${pane}" || return 0
   tmx send-keys -t "${target}" Escape
   sleep 2
   tmx send-keys -t "${target}" C-u
-  tmx send-keys -t "${target}" -l "/exit"
+  tmx send-keys -t "${target}" -l "$(agent_exit_cmd "${model}")"
   sleep 2
   tmx send-keys -t "${target}" C-m
   local waited=0
   while [ "$((waited += 3))" -le 60 ]; do
     sleep 3
     pane=$(tmx capture-pane -p -t "${target}" 2> /dev/null || true)
-    grep -qE "shift\+tab to cycle|esc to interrupt" <<< "${pane}" || return 0
+    grep -qE "shift\+tab to cycle|esc to interrupt|\((sub|auto)\)" <<< "${pane}" || return 0
   done
   return 1
+}
+
+# Remember which conversation lives in this window, so restart resumes it.
+record_session() {
+  case "$(agent_kind "${model}")" in
+    claude)
+      local id
+      id=$(claude_registry_session "${target}")
+      [ -n "${id}" ] && echo "${id}" > "${RUN_DIR}/meta/session_${role}"
+      ;;
+  esac
 }
 
 case "${action}" in
   start)
     ensure_window "${role}"
     exit_agent || { echo "ERROR: old agent in ${target} did not exit; not launching ${role}" >&2; exit 1; }
+    rm -f "${RUN_DIR}/meta/session_${role}"
     tmx send-keys -t "${target}" "cd ${RUN_WORK_DIR}" Enter
     sleep 1
     tmx send-keys -t "${target}" \
-      "$(agent_launch_cmd "$(role_model "${role}")") 'Read ${RUN_DIR}/prompts/${role}.md and follow it. You are the ${role} of this run.'" C-m
+      "$(agent_launch_cmd "${model}" "$(agent_session_flag "${model}" "${role}" start)") 'Read ${RUN_DIR}/prompts/${role}.md and follow it. You are the ${role} of this run.'" C-m
     wait_for_agent_ui "${target}" 90 || true
-    "${SKILL_DIR}/scripts/message.sh" log heartbeat "started ${role} (model $(role_model "${role}")) in ${target}"
+    sleep 3
+    record_session
+    "${SKILL_DIR}/scripts/message.sh" log heartbeat "started ${role} (model ${model}) in ${target}"
     echo "${role} launched in ${target}"
     ;;
   restart)
@@ -55,9 +72,10 @@ case "${action}" in
     tmx send-keys -t "${target}" "cd ${RUN_WORK_DIR}" Enter
     sleep 1
     tmx send-keys -t "${target}" \
-      "$(agent_launch_cmd "$(role_model "${role}")" "${RUN_CONTINUE_FLAG}")" C-m
+      "$(agent_launch_cmd "${model}" "$(agent_session_flag "${model}" "${role}" resume)")" C-m
     if wait_for_agent_ui "${target}" 90; then
-      sleep 2
+      sleep 3
+      record_session
       send_to_agent "${target}" \
         "You were restarted. Before anything else read ${RUN_DIR}/scratchpads/${role}.md, run ${SKILL_DIR}/scripts/message.sh read ${role} and ${SKILL_DIR}/scripts/time_status.sh, then continue your highest-priority work per prompts/${role}.md."
       "${SKILL_DIR}/scripts/message.sh" log heartbeat "restarted ${role} with context in ${target}"
@@ -73,9 +91,10 @@ case "${action}" in
     [ "${state}" = "NO_WINDOW" ] && exit 0
     echo "--- pane tail (${target}):"
     tmx capture-pane -p -t "${target}" | grep -v '^$' | tail -25
-    # STATE is a heuristic and this tail is a snapshot. Before typing into a
-    # window this calls IDLE, capture it again and compare: a busy pane changes,
-    # an idle one does not.
+    # STATE is a heuristic (for Claude agents the registry status is used
+    # first) and this tail is a snapshot. Before typing into a window this
+    # calls IDLE, capture it again and compare: a busy pane changes, an idle
+    # one does not.
     ;;
   stop)
     # Exiting the agent first matters: killing the window alone leaves the

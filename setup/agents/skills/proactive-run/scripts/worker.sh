@@ -7,7 +7,9 @@
 #   prompt-file  the file the worker reads and follows (keep it in the run dir)
 #   cwd          working directory — give every concurrent code-writing worker
 #                its own git worktree, never a shared checkout
-#   model        cheaper models for mechanical bulk, stronger for judgement
+#   model        cheaper models for mechanical bulk, stronger for judgement;
+#                `pi/<provider>/<model>` runs the worker on pi instead of the
+#                Claude CLI
 #   spawner      role notified on completion (default manager)
 #
 # The window is left open when the worker finishes so its results can be read;
@@ -25,17 +27,26 @@ spawner=${5:-manager}
 win="cw-${name}"
 target="${RUN_SESSION}:${win}"
 
+if window_exists "${win}"; then
+  echo "a window named ${win} already exists — pick another name or stop it first (agent.sh stop ${win})" >&2
+  exit 1
+fi
+echo "${model}" > "${RUN_DIR}/meta/model_${win}"
+rm -f "${RUN_DIR}/meta/session_${win}"
 tmx new-window -d -t "${RUN_SESSION}" -n "${win}" "${RUN_WINDOW_CMD}"
 sleep 1
 tmx send-keys -t "${target}" "cd ${cwd}" Enter
 sleep 1
-tmx send-keys -t "${target}" "$(agent_launch_cmd "${model}")" C-m
+tmx send-keys -t "${target}" "$(agent_launch_cmd "${model}" "$(agent_session_flag "${model}" "${win}" start)")" C-m
 
 if ! wait_for_agent_ui "${target}" 90; then
   echo "worker UI did not come up in ${target} — inspect manually" >&2
   exit 1
 fi
-sleep 2
+sleep 3
+case "$(agent_kind "${model}")" in
+  claude) id=$(claude_registry_session "${target}"); [ -n "${id}" ] && echo "${id}" > "${RUN_DIR}/meta/session_${win}" ;;
+esac
 
 # The contract is repeated to every worker because each clause here was bought
 # with lost work: silent finishes, local-only branches, and instructions that

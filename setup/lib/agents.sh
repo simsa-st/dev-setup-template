@@ -87,14 +87,20 @@ step_agents() {
   link "${claude_dir}" "${HOME}/.claude"
   link "${pi_dir}" "${HOME}/.pi"
 
-  if ! have claude; then
+  if have claude; then
+    claude update
+  else
     curl -fsSL https://claude.ai/install.sh | bash
   fi
 
   if have npm; then
-    npm install -g "${PI_PACKAGE}"
+    if have pi; then
+      pi update
+    else
+      npm install -g "${PI_PACKAGE}"
+    fi
     have pi && pi install npm:pi-nvim || true
   else
-    warn "npm missing; skipping pi install (run the tools step first)."
+    warn "npm missing; skipping pi install/update (run the tools step first)."
   fi
 }

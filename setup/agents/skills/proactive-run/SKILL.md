@@ -47,6 +47,13 @@ meta/                machine state: run.env, wakeup pids, heartbeat log,
                      target_<who> for an agent that has moved
 ```
 
+**The run lives in its own tmux session** (`RUN_SESSION`), never inside the
+session a human works in: the heartbeat and the stop script kill and create
+windows by name in that session, agents nudge each other by window name, and
+a human's window in the same session is one wrong target away from being
+typed into or killed. The human attaches to watch (`tmux -S <socket> attach
+-t <session>`) and keeps their own work elsewhere.
+
 Roles, each in a tmux window named after it — never addressed by index, since
 a window whose command fails is destroyed and the rest renumber — and each a
 first-level manager with its own workers:
@@ -60,6 +67,23 @@ first-level manager with its own workers:
 | `evaluator` | scores against the stated criteria on request | independent; flags work serving no criterion |
 | `ideator` | a ranked, mechanism-verified backlog | proposes, never implements |
 | workers (`cw-*`) | one task each | own git worktree, own prompt file, own result file; stands by when done, the spawner closes it |
+
+Roles that fit some runs and not others: `presenter` (owns the interactive
+report as a product — organisation, deduplication, visuals — not just its
+freshness), `researcher` (methodology: how the thing should be measured, what
+the statistics support, what a benchmark must control for), `attacker` /
+`ideator` split (one generates and ranks, one executes against real targets).
+
+**Two agent CLIs can share a run.** A model spelled `pi/<provider>/<model>`
+(e.g. `pi/openai-codex/<model>`) runs that role or worker on pi, on its own
+subscription and its own quota — useful for hard, well-specified tasks and for
+spreading load off the Claude windows. Pick a model tier for the task the way
+you would for the primary CLI (cheap for mechanical bulk, strong for
+judgement). Everything else runs the Claude CLI. The scripts switch launch
+command, liveness markers and exit command on that prefix; `agent.sh` records
+each agent's own session id so a restart resumes *its* conversation and never
+a neighbour's (`--continue` picks the most recent conversation in the cwd,
+which with eight roles in one directory is somebody else's).
 
 Scale down freely — a small run is manager + one critic + workers. Keep the
 heartbeat at any size; it is what makes the run survive the night.
@@ -128,12 +152,40 @@ backlog and named spend categories, it works.
 - Pace linearly toward a target percentage of the window, and re-derive the
   target when a limit window resets mid-run. Run the status script before
   scheduling work; treat it, not a UI bar, as the source of truth.
-- Hard guards, enforced by the manager and the heartbeat: near the short-window
-  limit, start no new workers; very near it, coordination only; near the long
-  window limit, stop until reset. **Never accept a "continue on extra
-  usage/credits" dialog** — decline it and schedule a wakeup for the reset.
+- Hard guards, enforced by the manager and the heartbeat, **for both Claude
+  and pi independently**: near either 5h limit, start no new workers on that
+  agent; very near it, coordination only on that agent; near either 7d limit,
+  stop that agent until reset. Move work to the other CLI only when its own
+  quota permits. **Never accept a "continue on extra usage/credits" dialog**
+  unless a human set `RUN_ALLOW_CREDITS=1`; otherwise decline it and schedule
+  a wakeup for the reset.
 - Different models may have separate quotas the scripts cannot see. Pin one
   role per scarce model, and treat the human's occasional readings as truth.
+- **Meters, one script.** `time_status.sh` prints Claude usage (from the
+  status-line snapshot) and Codex usage (the same fetcher shown by Pi's status
+  extension). Both subscriptions report 5h/7d percentages and resets; compare
+  **both** 7d values to the pacing target and **both** 5h values to the
+  short-window guard. Reject stale snapshots rather than pacing on them.
+  Claude extra-usage dollars appear only when reported by the CLI; Codex may
+  report a credit balance but its units are not established as USD.
+- **Any external per-call service the run drives programmatically** (a
+  proxied LLM key, a paid search/data API) needs its own **approved spend cap
+  and a script that snapshots spend against it** before anything calls it
+  (`time_status.sh` reads that snapshot if `RUN_EXTERNAL_SPEND_SNAPSHOT` is
+  set, the same way it reads the Codex one). **If a per-call service has no
+  metering, it must not be called** — an unmetered loop cannot say what it
+  spent, and by the time anyone notices, it already has. A breached cap stops
+  the spend that feeds it, not the run; **only a human authorises an
+  overage**, never an agent under pacing pressure, and it belongs in
+  `run.env`, not a one-off decision mid-run. `time_status.sh` only reports the
+  meter; the integration making calls must enforce the cap and freshness at
+  its call boundary. A prompt alone cannot stop a background job from billing.
+- **The machine is a budget too.** `sysmon.sh` (started by `run.sh start`)
+  logs load, available memory, swap and disk every two minutes and alerts the
+  manager's inbox on a breach; the heartbeat reads the last alert. On a small
+  box (4 cores, 16 GB) cap concurrent agent windows at about eight and
+  concurrent heavy workers at three or four, and prefer one shared service
+  stack (database, proxy) over one per worker.
 - Prefer heavy fan-outs when the machine is quiet (check load, prefer nights),
   and keep a per-run registry of the ports and stacks you occupy.
 
@@ -249,6 +301,46 @@ measurement has its own discipline — most of a night was lost relearning it.
 
 ## Failure modes to pre-empt
 
+- **Dialogs read as idle prompts.** A select dialog (workspace trust,
+  external CLAUDE.md imports, bypass-permissions acceptance, a plan approval)
+  draws the same `❯` cursor as an empty prompt; one run's manager was nudged
+  while such a dialog was open, the nudge's Enter confirmed "No, exit", and
+  the manager was gone before its first turn. `pane_state` now reports
+  `DIALOG` and nothing types into it; `wait_for_agent_ui` answers the known
+  dialogs, and Claude sessions launch with `IS_SANDBOX=1` so the bypass
+  acceptance never appears. Claude's own session registry
+  (`~/.claude/sessions/<pid>.json`, busy/idle per pane) is the primary
+  liveness source where it exists.
+- **An interactive shell can stop before the command.** oh-my-zsh's "Would you
+  like to update? [Y/n]" held a run's heartbeat window for hours: the loop
+  created the window, the shell asked, nothing typed, `BEAT_FAILED` every two
+  hours. Launch shells with `DISABLE_AUTO_UPDATE=true` (heartbeat.sh does) and
+  set it in the tmux session environment so worker windows inherit it; any
+  framework prompt of that kind belongs on the kickoff checklist.
+- **Compacted, then nothing.** The heartbeat compacted an idle manager whose
+  context was large, and the manager stayed idle for four hours afterwards with
+  no memory of the phase, while a background job it had launched kept failing
+  and every beat logged "no alerts". Two rules came out of it: a compaction is
+  followed on the same beat by a wake-up ("re-read your scratchpad and
+  continue"), and the run declares its background jobs in `meta/jobs.txt`
+  (`<name> <pgrep-pattern> <log> <failure-regex> <finished-regex>`) so
+  `heartbeat.sh` itself — plain bash — counts failures and liveness every beat
+  and wakes the manager on a change. Agent liveness is not run health; the job
+  the run exists to produce is.
+- **Exit codes measure the driver, not the measurement.** A pipeline produced
+  hundreds of records and zero scorable outputs across two runs; both exited
+  0, the failure grep read clean, the heartbeat was happy, the live table
+  counted them done. Every job in `meta/jobs.txt` therefore needs a
+  productivity check beside its liveness check: the job itself must write a
+  line matching its failure regex when a unit of work completes without
+  producing what it exists to produce (a batch whose scored fraction is below
+  half, a pipeline stage with an empty output), so the mechanical beat catches
+  it the same way it catches a crash.
+- **Claude Code's own updater is a second such prompt.** A worker that
+  self-updated mid-run showed "Update installed · Restart to update" over an
+  empty prompt and did no more work. `run.sh` therefore launches every Claude
+  session with `DISABLE_AUTOUPDATER=1` in `RUN_AGENT_ENV`; a run started before
+  that default needs it added to `meta/run.env` by hand.
 - **Typing into agent TUIs**: send literal text, let paste detection settle,
   then a separate submit key. Named-Enter alone inserts a newline and the
   message sits unsent (this dominated one run's failures until fixed).
@@ -327,12 +419,31 @@ directory. Read the header of each for its arguments.
 | `worker.sh <name> <prompt-file> [cwd] [model] [spawner]` | disposable worker in its own window |
 | `message.sh send [--wake]\|read\|log` | inboxes and event logs; `--wake` types the nudge whatever the recipient is doing |
 | `wakeup.sh <tag> <delay> <role> [text]` | self-nudge, replacing any pending wakeup with the same tag |
-| `time_status.sh` | deadline, elapsed/remaining, usage vs linear target, machine load |
+| `time_status.sh` | deadline, elapsed/remaining, Claude/Codex usage vs caps, external per-call spend if metered, machine load and memory |
 | `heartbeat.sh` | detached loop that respawns a fresh checker session every beat |
+| `codex_usage.sh` | snapshot of the Codex subscription's 5 h / 7 d usage (pi's login) |
+| `sysmon.sh` | detached loop: load / memory / swap / disk log + alerts to the manager |
 
-The usage figures come from the snapshot the agent's status line writes (see
-`setup/agents/claude/statusline.sh`); without it every other line still works.
+Claude usage comes from `setup/agents/claude/statusline.sh`. Codex usage comes
+from the subscription endpoint via pi's OAuth login, shared between
+`codex_usage.sh` and `setup/agents/pi/agent/extensions/usage-status.ts`.
+Without either source, the other meter and the rest of the status still work.
 `wakeup.sh` needs `resume-agent` from this repo's `config/bin` on `PATH`.
 `templates/` holds `PROTOCOL.md`, `WORKER_PROTOCOL.md`, `STATUS.md`,
 `role_prompt.md` and `heartbeat_check.md` — `run.sh init` copies them into the
 run — plus `ATTENDED.md` and `recovery.md`, which are copied in when needed.
+
+## Companion files
+
+- **`KICKOFF.md`** — the ordered checklist for standing a run up: plumbing
+  verified at kickoff rather than at the deadline, the `meta/run.env` fields
+  worth thinking about, the pacing rule in arithmetic (short-window reserve,
+  restart hysteresis, long-window linear target, what the heartbeat enforces),
+  background jobs in `meta/jobs.txt`, and the live-report loop.
+- **`roles/`** — one file per role (`manager`, `heartbeat`, `worker`,
+  `presenter`, `researcher`, `reviewer`, `tester`, `ideator`, `attacker`):
+  the prompt shape that worked, the best practices learnt, the known failure
+  modes, and which model to spend on. `roles/README.md` indexes them and gives
+  the seven parts every role prompt carries.
+
+Read this file first, then `KICKOFF.md`, then only the roles you are staffing.

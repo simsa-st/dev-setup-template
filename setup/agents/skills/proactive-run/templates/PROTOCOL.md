@@ -27,11 +27,20 @@ Deliverables: <branch naming scheme>, `$RUN/REPORT.md` (living, human-first),
 - Deadline: **<UTC timestamp>**. Run `scripts/time_status.sh` before scheduling
   work; at `STATUS=OVER`, finalize and wind down.
 - Usage target: ~<goal>% of the window by its end, paced roughly linearly.
-  **Never exceed 100% of any limit, and never accept a "continue on extra
-  usage / credits" dialog** — decline it and schedule a wakeup for the reset.
-- Guards: short window ≥85% → start no new workers; ≥93% → coordination only;
-  long window ≥98% → stop until reset. Below target with ranked useful work
-  waiting is a failure too: launch more substantial delegated work.
+  **Never exceed 100% of either subscription limit.** Decline any "continue
+  on extra usage / credits" dialog and schedule a wakeup for the reset unless
+  a human set `RUN_ALLOW_CREDITS=1` in `meta/run.env`.
+- Guards apply to **each CLI separately**: either 5h window ≥85% → start no
+  new workers on that CLI; ≥93% → coordination only; either 7d window ≥98% →
+  stop that CLI until reset. Never pace on a stale or unavailable reading.
+  Below target with ranked useful work waiting is a failure too: delegate to
+  whichever CLI still has headroom.
+- Other meters (`time_status.sh` prints all of them): Codex usage for pi
+  agents (cap `RUN_CODEX_MAX_PERCENT`), spend on any external per-call service
+  the run drives programmatically if one is metered (cap
+  `RUN_EXTERNAL_SPEND_CAP_USD` — unmetered means the service must not be
+  called at all), machine memory and load (`sysmon` alerts). A breached meter
+  stops the spend that feeds it, not the run.
 - Named spend categories (where surplus budget is meant to go): adversarial
   self-review against real systems, re-verification of worker claims, rebases
   and conflict reconciliation, strengthening tests, comparing two or three

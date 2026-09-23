@@ -25,6 +25,14 @@ rebooted, not crashed.
   read it. This file is the shared one: `~/.pi/agent/AGENTS.md` symlinks here.
 - Prefer a named, reusable script in the repo over an inline one-liner when the
   thing is worth running twice.
+- Choose models by task: use a cost-efficient model for routine or mechanical
+  work and a stronger model when complexity or ambiguity warrants it. Reserve
+  the highest-capability option for genuinely high-stakes decisions where an
+  error would be costly.
+- Before unattended work calls an externally billed service, establish who
+  pays, the approved spend ceiling, a way to observe actual spend and a stop
+  condition. If the meter is missing or stale, pause that work rather than
+  infer that budget remains. Never accept overages without explicit approval.
 
 # tmux
 

@@ -33,6 +33,13 @@ export RUN_CONTINUE_FLAG="${RUN_CONTINUE_FLAG:---continue}"
 export RUN_BUDGET_GOAL_PERCENT="${RUN_BUDGET_GOAL_PERCENT:-95}"
 export RUN_HEARTBEAT_INTERVAL_S="${RUN_HEARTBEAT_INTERVAL_S:-3600}"
 export RUN_RATE_LIMIT_SNAPSHOT="${RUN_RATE_LIMIT_SNAPSHOT:-/tmp/claude-rate-limits.json}"
+# A second agent CLI (pi, on its own subscription) can run any role or worker:
+# spell its model as `pi/<provider>/<model>` in RUN_ROLES or worker.sh's model
+# argument, and the launch, liveness and exit logic below switch accordingly.
+export RUN_PI_BIN="${RUN_PI_BIN:-pi}"
+export RUN_PI_ARGS="${RUN_PI_ARGS:---approve}"
+export RUN_CODEX_SNAPSHOT="${RUN_CODEX_SNAPSHOT:-${PI_CODING_AGENT_DIR:-${HOME}/.pi/agent}/codex-usage.json}"
+export RUN_MIN_MEM_AVAIL_MB="${RUN_MIN_MEM_AVAIL_MB:-1500}"
 
 tmx() { tmux -S "${TMUX_SOCKET}" "$@"; }
 
@@ -78,15 +85,25 @@ window_list() {
   tmx list-windows -t "${RUN_SESSION}" -F '#{window_index}:#{window_name}' 2> /dev/null | tr '\n' ' '
 }
 
-# Classify what is in a window: RUNNING | IDLE | LIMIT | STOPPED | NO_WINDOW.
+# Classify what is in a window: RUNNING | IDLE | LIMIT | DIALOG | STOPPED | NO_WINDOW.
 # A heuristic — read the pane yourself before acting on it. The input line
 # renders BELOW the working area, so an agent eleven minutes into a tool call
 # shows a bare prompt at the bottom of its pane and reads as idle: never judge
 # from the last line.
 pane_state() { # <target>
-  local pane tail
+  local pane tail reg
   pane=$(tmx capture-pane -p -t "$1" 2> /dev/null) || { echo NO_WINDOW; return 0; }
   tail=$(grep -v '^$' <<< "${pane}" | tail -25)
+  # Claude Code keeps a live registry entry per running session with a
+  # busy/idle status (~/.claude/sessions/<pid>.json, keyed to the tmux pane).
+  # It is written by the agent itself, so where it exists it beats any
+  # reading of the screen; the heuristics below are the fallback and the
+  # only source for pi.
+  reg=$(claude_registry_status "$1")
+  case "${reg}" in
+    busy) echo RUNNING; return 0 ;;
+    idle) ;; # fall through: an idle agent may still sit behind a limit banner
+  esac
   # The elapsed timer is the busy marker that always holds. Do NOT match the
   # spinner's verb: it is randomised, so any word list you write is incomplete
   # and will call a working agent idle. The minutes part is optional, and that
@@ -94,17 +111,47 @@ pane_state() { # <target>
   # first 60 seconds of every turn, which is exactly when an agent has just been
   # given work and is most likely to be looked at. One run typed into three
   # working agents through that hole, in the rule written to prevent it.
-  if grep -qE '\(([0-9]+m )?[0-9]+s · |esc to interrupt|esc to cancel|ctrl\+b to run in background' <<< "${tail}"; then
+  # pi: a braille spinner + "Working" rule while a turn runs, "Elapsed" under a
+  # running shell command.
+  # A select dialog (trust, imports, bypass, a plan approval) draws its own
+  # `❯` cursor, which would read as an idle prompt: report it as its own
+  # state, so nothing types a message into a menu.
+  if grep -qE 'Enter to confirm|Esc to cancel|Do you trust the files' <<< "${tail}"; then
+    echo DIALOG
+  elif grep -qE '\(([0-9]+m )?[0-9]+s · |esc to interrupt|esc to cancel|ctrl\+b to run in background|[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Working|^ Elapsed [0-9.]+s' <<< "${tail}"; then
     echo RUNNING
   # Only a real limit banner: agents constantly *mention* resets in their own
   # prose, so a bare "resets at" must not classify as LIMIT.
-  elif grep -qiE '(reached|exceeded|hit) (your|the)? ?(usage|5-hour|weekly|session)? ?limit|limit (reached|exceeded)|out of (tokens|credits)' <<< "${tail}"; then
+  elif grep -qiE '(reached|exceeded|hit) (your|the)? ?(usage|5-hour|weekly|session)? ?limit|limit (reached|exceeded)|out of (tokens|credits)|rate_limit_exceeded' <<< "${tail}"; then
     echo LIMIT
-  elif grep -qE 'shift\+tab to cycle|❯' <<< "${tail}"; then
+  elif [ "${reg}" = idle ] || grep -qE 'shift\+tab to cycle|❯|\((sub|auto)\)' <<< "${tail}"; then
     echo IDLE
   else
     echo STOPPED
   fi
+}
+
+# Claude Code's own status for the session in a pane: busy | idle | "" (no
+# registry entry — not a Claude agent, or not up yet). Matched on the pane id,
+# which the registry records as `session:@window.%pane`.
+claude_registry_status() { # <target>
+  local pane_ref f
+  pane_ref=$(tmx display-message -p -t "$1" '#{session_name}:#{window_id}.#{pane_id}' 2> /dev/null) || return 0
+  for f in "${HOME}"/.claude/sessions/*.json; do
+    [ -s "${f}" ] || continue
+    jq -r --arg p "${pane_ref}" 'select(.tmux == $p) | .status // empty' "${f}" 2> /dev/null && continue
+  done | head -n1
+}
+
+# The session id of the Claude agent in a pane, from the same registry — what
+# a restart resumes. Empty for pi (pi is given its id up front, see agent_session_flag).
+claude_registry_session() { # <target>
+  local pane_ref f
+  pane_ref=$(tmx display-message -p -t "$1" '#{session_name}:#{window_id}.#{pane_id}' 2> /dev/null) || return 0
+  for f in "${HOME}"/.claude/sessions/*.json; do
+    [ -s "${f}" ] || continue
+    jq -r --arg p "${pane_ref}" 'select(.tmux == $p) | .sessionId // empty' "${f}" 2> /dev/null
+  done | head -n1
 }
 
 # Type a message into an agent TUI and submit it. Agent TUIs treat a fast
@@ -117,10 +164,14 @@ pane_state() { # <target>
 send_to_agent() { # <target> <text...>
   local target=$1
   shift
-  if [ "$(pane_state "${target}")" = RUNNING ]; then
-    echo "refusing to type into ${target}: it is working (send_to_agent_now queues it deliberately)" >&2
-    return 1
-  fi
+  case "$(pane_state "${target}")" in
+    RUNNING)
+      echo "refusing to type into ${target}: it is working (send_to_agent_now queues it deliberately)" >&2
+      return 1 ;;
+    DIALOG)
+      echo "refusing to type into ${target}: a dialog is open — answer it first (agent.sh check shows it)" >&2
+      return 1 ;;
+  esac
   send_to_agent_now "${target}" "$@"
 }
 
@@ -145,7 +196,15 @@ wait_for_agent_ui() { # <target> [timeout_s]
     pane=$(tmx capture-pane -p -t "${target}" 2> /dev/null || true)
     if grep -q "Do you trust the files" <<< "${pane}"; then
       tmx send-keys -t "${target}" Enter
-    elif grep -qE "shift\+tab to cycle|esc to interrupt" <<< "${pane}"; then
+    elif grep -qE "Allow external CLAUDE.md file imports|Bypass Permissions mode" <<< "${pane}"; then
+      # Two dialogs a fresh session in a repo may show: the external-import
+      # question (a CLAUDE.md that imports `@AGENTS.md` above the cwd) and the
+      # bypass-permissions acceptance. Both default to "No"; the answer the
+      # run wants is the second option, so Down then Enter.
+      tmx send-keys -t "${target}" Down
+      sleep 1
+      tmx send-keys -t "${target}" Enter
+    elif grep -qE "shift\+tab to cycle|esc to interrupt|\((sub|auto)\)|[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Working" <<< "${pane}"; then
       return 0
     fi
     sleep 3
@@ -155,14 +214,49 @@ wait_for_agent_ui() { # <target> [timeout_s]
   return 1
 }
 
+# Which CLI a model spec selects: `pi/<provider>/<model>` runs pi, anything
+# else runs the Claude CLI.
+agent_kind() { # <model>
+  case "$1" in pi/*) echo pi ;; *) echo claude ;; esac
+}
+
 agent_launch_cmd() { # <model> [extra-args...]
   local model=$1
   shift
   # RUN_AGENT_ENV is a prefix rather than an export: this command is typed into
   # a shell by send-keys, and a containerised run's shell is not this process.
   # Unset in a run.env written before it existed, hence the :+ guard.
-  printf '%s%s %s %s %s' "${RUN_AGENT_ENV:+${RUN_AGENT_ENV} }" \
-    "${RUN_AGENT_BIN}" "${RUN_MODEL_FLAG} ${model}" "${RUN_AGENT_ARGS}" "$*"
+  case "$(agent_kind "${model}")" in
+    pi) printf '%s --model %s %s %s' "${RUN_PI_BIN}" "${model#pi/}" "${RUN_PI_ARGS}" "$*" ;;
+    *) printf '%s%s %s %s %s' "${RUN_AGENT_ENV:+${RUN_AGENT_ENV} }" \
+      "${RUN_AGENT_BIN}" "${RUN_MODEL_FLAG} ${model}" "${RUN_AGENT_ARGS}" "$*" ;;
+  esac
+}
+
+# The flag that ties an agent to ITS OWN conversation, so a restart resumes the
+# right one. `--continue` picks the most recent conversation in the cwd, and
+# with eight roles sharing one working directory that is somebody else's. pi
+# takes a caller-chosen id up front (`--session-id`, created if missing, so the
+# same flag starts and resumes); Claude mints its own, which agent.sh reads
+# back from the registry after start and stores in meta/session_<who>.
+agent_session_flag() { # <model> <who> <start|resume>
+  local model=$1 who=$2 mode=$3 id_file="${RUN_DIR}/meta/session_${2}"
+  case "$(agent_kind "${model}")" in
+    pi)
+      [ -s "${id_file}" ] || printf 'run-%s-%s\n' "${RUN_NAME:-run}" "${who}" > "${id_file}"
+      printf -- '--session-id %s' "$(head -n1 "${id_file}")" ;;
+    *)
+      if [ "${mode}" = resume ] && [ -s "${id_file}" ]; then
+        printf -- '--resume %s' "$(head -n1 "${id_file}")"
+      elif [ "${mode}" = resume ]; then
+        printf -- '%s' "${RUN_CONTINUE_FLAG}"
+      fi ;;
+  esac
+}
+
+# The slash command that exits the TUI cleanly.
+agent_exit_cmd() { # <model>
+  case "$(agent_kind "$1")" in pi) echo /quit ;; *) echo /exit ;; esac
 }
 
 # Open a window running a shell in the run's working environment. RUN_WINDOW_CMD

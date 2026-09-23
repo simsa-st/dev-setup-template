@@ -10,6 +10,8 @@ agent/*
 # packages into it. step_agents renders it from this base.
 !agent/settings.base.json
 !agent/models.json
+!agent/extensions
+!agent/extensions/**
 !agent/prompts
 !agent/skills
 !agent/skills/**

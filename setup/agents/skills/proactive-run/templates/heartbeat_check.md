@@ -11,7 +11,10 @@ the agents' actual work, and you never start project work of your own.
 Do, in order:
 
 1. `scripts/time_status.sh`, `tail -20 $RUN/logs/heartbeat.md` (what previous
-   beats saw and did), and the header of `$RUN/STATUS.md`.
+   beats saw and did), and the header of `$RUN/STATUS.md`. Read **both** the
+   Claude `MODEL=` and Pi `CODEX` 5h/7d readings against the same guards; a
+   stale or missing reading is not spare capacity. Wake the manager to fix the
+   meter before it schedules more work on that CLI. Compare resets separately.
 2. For each role in `meta/run.env`: `scripts/agent.sh check <role>`, and list
    the workers with `tmux -S <socket> list-windows -t <session>`. A role that
    STATUS.md does not expect to be running yet is not a problem.
@@ -31,7 +34,8 @@ Do, in order:
    - A trust dialog, stray form or confirmation blocking an agent → answer it
      (usually the safe default) and log it. **Exception: any "continue on extra
      usage / credits" dialog must be declined**, logged, and followed by a
-     wakeup for the reset time.
+     wakeup for the reset time — unless `meta/run.env` has
+     `RUN_ALLOW_CREDITS=1`, in which case accept it and log it.
    - An agent STATUS.md expects to be running, but the window shows a plain
      shell or a crashed agent → `scripts/agent.sh restart <role>`.
    - Idle with **unsubmitted text in its input box** and no pending wakeup: the
@@ -52,7 +56,17 @@ Do, in order:
      (`scripts/wakeup.sh limit-<role> <delay> <role> "…"`), computing the delay
      from the reset time in the pane or in `time_status.sh`.
    - Idle with a large context (status line ≥ ~60%) → send `/compact` to that
-     window with the literal-text-then-submit protocol.
+     window with the literal-text-then-submit protocol — **and then, on the same
+     beat, re-prompt it**: `scripts/message.sh send --wake heartbeat <role>
+     "compacted — re-read scratchpads/<role>.md, STATUS.md and your inbox, then
+     continue the in-flight work"`. A compaction is a restart of the agent's
+     memory; an agent left idle after one is an agent left idle after a restart.
+     One run compacted its manager at noon and the manager sat idle for four
+     hours while the background job it had launched kept failing.
+   - **The manager idle while background work is running** (any job in
+     `meta/jobs.txt` alive, or a worker whose last message says it is waiting
+     on the manager) and its inbox is non-empty or a job has failed since the
+     last beat → wake it. Idle is not healthy when there is work to react to.
    - `STATUS=OVER` and the manager is not finalizing → nudge or restart it with
      "the run is OVER — finalize per PROTOCOL".
 4. **Check your own machinery, not only the agents'.** This loop has twice run
@@ -65,7 +79,16 @@ Do, in order:
    - Confirm the wakeup you rely on for the next beat is actually armed, as
      above. A dead-man switch that is itself dead is the worst failure this run
      can have, because everything downstream still looks fine.
-5. Log exactly one summary line:
-   `scripts/message.sh log heartbeat "beat: <role>=<state> … workers=<n> armed=<n> actions=<what you did>"`.
+5. **Check the run's background jobs, every beat, whichever roles look fine.**
+   `meta/jobs.txt` lists them (`<name> <pgrep-pattern> <log> <failure-regex>
+   <finished-regex>`); `heartbeat.sh` already does the mechanical count and
+   wakes the manager on a change (`JOB_ALERT` in `meta/heartbeat.log`). Your
+   part: read the last failure lines of each job's log, judge whether the
+   manager has acted on them (a decision, a commit, a re-run under a fresh
+   name), and if not, wake it naming the jobs. A run can be healthy by every
+   agent check while the thing it exists to produce fails one job after
+   another. Put `jobs=<failures>/<started> running=<y|n>` in your line.
+6. Log exactly one summary line:
+   `scripts/message.sh log heartbeat "beat: <role>=<state> … workers=<n> armed=<n> jobs=<f>/<n> running=<y|n> actions=<what you did>"`.
 6. Stop. Reply with that line and nothing else. Do not read large files, do not
    message the human.

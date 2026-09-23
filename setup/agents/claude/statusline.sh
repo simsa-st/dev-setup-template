@@ -70,6 +70,13 @@ for spec in 'five_hour:5h' 'seven_day:7d'; do
   resets=$(jq -r ".rate_limits.${key}.resets_at // empty" <<< "${input}")
   parts+=("${label}:$(bar "${pct}")$(reset_in "${resets}")")
 done
+# Extra-usage credits are cents. Show only explicit spend and limit values;
+# subscription usage is not an inferred dollar cost.
+extra=$(jq -r '.rate_limits.extra_usage | if .is_enabled == true and (.used_credits | type) == "number" and (.monthly_limit | type) == "number" then "\(.used_credits) \(.monthly_limit)" else empty end' <<< "${input}")
+if [ -n "${extra}" ]; then
+  read -r used limit <<< "${extra}"
+  parts+=("extra:\$$(awk -v n="${used}" 'BEGIN{printf "%.2f",n/100}')/\$$(awk -v n="${limit}" 'BEGIN{printf "%.2f",n/100}')")
+fi
 
 printf '%s' "${parts[0]:-}"
 for ((i = 1; i < ${#parts[@]}; i++)); do printf ' \033[90m|\033[0m %s' "${parts[i]}"; done
