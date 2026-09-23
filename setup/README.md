@@ -66,6 +66,19 @@ Steps run in this order, each one a `step_<name>` function in `lib/`:
 | `ssh` | both | hosts from `hosts.toml`: whole config, or a `config.d` fragment. Pins `github.com` to `[defaults].identity_file` (`git_hosts` to change the list) and warns when that key is missing or not accepted by github — without the pin, `git@github.com:` remotes fail on a fresh box |
 | `finish` | both | print what to run next |
 
+Optional features in `config/profile.env.example` default **off**: release-age
+safeguards (set at least one tool's age before enabling; `--only tools`), Linux
+Bun and Docker (`--only packages`), Docker group membership (a separate
+root-equivalent privilege opt-in), and a full-mode GitHub HTTPS credential
+helper via `gh` (`--only git`; authenticate `gh` first). Set each release-age
+value using that package manager's own units; only configured managers are
+changed. `JOIN_DOCKER_GROUP=true` grants root-equivalent access and must be a
+separate decision from installing Docker. Pi's Codex footer is also opt-in via
+`PI_SHOW_CODEX_USAGE=true` and needs a Codex login. None of these copies an
+employer's packages, age policy, credentials or services into a new setup.
+Full-mode `--only agents` updates already installed Claude Code and pi; layer
+mode leaves those binaries to the owning setup.
+
 ## Invariants
 
 These are what make the setup re-runnable and portable; break one and reruns

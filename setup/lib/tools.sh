@@ -2,6 +2,10 @@
 # Language toolchains and editors: uv, node, neovim.
 
 step_tools() {
+  if [ "${RELEASE_AGE_GUARDS:-false}" = "true" ] &&
+    [ -z "${UV_EXCLUDE_NEWER:-}${NPM_MIN_RELEASE_AGE:-}${BUN_MINIMUM_RELEASE_AGE:-}${PNPM_MINIMUM_RELEASE_AGE:-}" ]; then
+    die "RELEASE_AGE_GUARDS=true requires at least one configured age"
+  fi
   install_uv
   install_node
 
@@ -9,6 +13,8 @@ step_tools() {
   if [ -f "${DEV_REPO_DIR}/.pre-commit-config.yaml" ]; then
     (cd "${DEV_REPO_DIR}" && uv run pre-commit install)
   fi
+
+  configure_release_age_guards
 
   # TODO(bootstrap): add per-project environment setup here — cloning the repos
   # you work on, creating their virtualenvs (`uv sync --frozen`), installing
@@ -29,6 +35,20 @@ install_uv() {
   fi
   hash -r
   have uv || die "uv installed but not on PATH (expected ${XDG_CONFIG_HOME}/bin on PATH)."
+}
+
+configure_release_age_guards() {
+  [ "${RELEASE_AGE_GUARDS:-false}" = "true" ] || return 0
+  [ -n "${UV_EXCLUDE_NEWER:-}" ] && ensure_config_line "${XDG_CONFIG_HOME}/uv/uv.toml" "exclude-newer" ' = ' "\"${UV_EXCLUDE_NEWER}\""
+  [ -n "${NPM_MIN_RELEASE_AGE:-}" ] && ensure_config_line "${HOME}/.npmrc" "min-release-age" '=' "${NPM_MIN_RELEASE_AGE}"
+  [ -n "${BUN_MINIMUM_RELEASE_AGE:-}" ] && ensure_config_line "${HOME}/.bunfig.toml" "minimumReleaseAge" ' = ' "${BUN_MINIMUM_RELEASE_AGE}" '[install]'
+  if [ -n "${PNPM_MINIMUM_RELEASE_AGE:-}" ]; then
+    if [ "${TARGET}" = "macos" ]; then
+      ensure_config_line "${HOME}/Library/Preferences/pnpm/rc" "minimum-release-age" '=' "${PNPM_MINIMUM_RELEASE_AGE}"
+    else
+      ensure_config_line "${XDG_CONFIG_HOME}/pnpm/rc" "minimum-release-age" '=' "${PNPM_MINIMUM_RELEASE_AGE}"
+    fi
+  fi
 }
 
 install_node() {

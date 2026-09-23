@@ -71,7 +71,27 @@ apt_install_base() {
   hash -r
 }
 
+ensure_docker_group() {
+  have docker || return 0
+  getent group docker >/dev/null 2>&1 || return 0
+  id -nG "${USER}" | tr ' ' '\n' | grep -qx docker && return 0
+  if ! sudo -n true 2>/dev/null; then
+    warn "not in the docker group and passwordless sudo is unavailable."
+    return 0
+  fi
+  sudo -n usermod -aG docker "${USER}" || { warn "could not add ${USER} to docker group."; return 0; }
+  warn "docker group added; log out and back in before using docker."
+}
+
 step_packages() {
+  if [ "${TARGET}" = "linux" ]; then
+    if [ "${INSTALL_BUN:-false}" = "true" ]; then
+      [ -n "${BUN_VERSION:-}" ] || die "INSTALL_BUN=true requires BUN_VERSION"
+    fi
+    if [ "${INSTALL_DOCKER:-false}" = "true" ]; then
+      APT_PACKAGES+=(docker.io docker-compose-v2)
+    fi
+  fi
   if [ "${TARGET}" = "macos" ]; then
     have brew || die "Homebrew is required on macOS: https://brew.sh"
     brew install "${BREW_PACKAGES[@]}"
@@ -88,5 +108,18 @@ step_packages() {
     # status line instead of an error.
     install_release_binary jq \
       "https://github.com/jqlang/jq/releases/download/jq-${JQ_VERSION}/jq-linux-amd64"
+    if [ "${INSTALL_BUN:-false}" = "true" ]; then
+      install_release_binary bun \
+        "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-x64.zip" \
+        "bun-linux-x64/bun"
+    fi
+    if [ "${INSTALL_DOCKER:-false}" = "true" ]; then
+      have docker || warn "INSTALL_DOCKER=true, but docker is unavailable (apt may need an administrator)."
+      if [ "${JOIN_DOCKER_GROUP:-false}" = "true" ]; then
+        ensure_docker_group
+      else
+        warn "Docker installed without group membership; use sudo or explicitly opt in to root-equivalent JOIN_DOCKER_GROUP."
+      fi
+    fi
   fi
 }

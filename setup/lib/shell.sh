@@ -221,19 +221,31 @@ step_tmux() {
 # and nothing else, and git reads ~/.gitconfig *after* the XDG file, so the
 # include wins inside the tree and is invisible outside it.
 step_git() {
+  if [ "${DEVSETUP_MODE}" = "full" ] && [ "${GH_CREDENTIAL_HELPER:-false}" = "true" ]; then
+    have gh || die "GH_CREDENTIAL_HELPER=true requires gh on PATH and an authenticated gh account"
+  fi
   mkdir -p "${XDG_CONFIG_HOME}/git"
 
   if [ "${DEVSETUP_MODE}" = "full" ]; then
     # Generated, not symlinked: the identity comes from profile.env, and a local
     # ~/.gitconfig may carry machine-specific credential helpers.
     backup_path "${XDG_CONFIG_HOME}/git/config"
-    write_generated "${XDG_CONFIG_HOME}/git/config" \
-      sed -e "s|__GIT_USER_NAME__|${GIT_USER_NAME}|g" \
-          -e "s|__GIT_USER_EMAIL__|${GIT_USER_EMAIL}|g" \
-          "${DEV_SETUP_DIR}/config/git/config.template"
+    write_generated "${XDG_CONFIG_HOME}/git/config" render_git_config
   fi
 
   write_layer_gitconfig
+}
+
+render_git_config() {
+  sed -e "s|__GIT_USER_NAME__|${GIT_USER_NAME}|g" \
+      -e "s|__GIT_USER_EMAIL__|${GIT_USER_EMAIL}|g" \
+      "${DEV_SETUP_DIR}/config/git/config.template"
+  if [ "${GH_CREDENTIAL_HELPER:-false}" = "true" ]; then
+    # The global config is generated, so `gh auth setup-git` would be erased
+    # on the next install. Opt in only after authenticating gh for this account.
+    printf '\n[credential "https://github.com"]\n  helper = !gh auth git-credential\n'
+    printf '[credential "https://gist.github.com"]\n  helper = !gh auth git-credential\n'
+  fi
 }
 
 # The identity half of step_git for layer mode. Only [user] is written: the rest
