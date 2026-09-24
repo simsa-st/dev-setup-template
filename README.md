@@ -142,6 +142,12 @@ nothing enforces it:
 An agent is the right tool here precisely because the two repos have diverged by
 design: this is a translation, not a merge, and `git` cannot do it for you.
 
+Keep the review record **in each instantiation**, not here: the template must
+not publish a list of its copies or their commits. Copy
+[`docs/porting-ledger.template.md`](docs/porting-ledger.template.md) into that
+instantiation as `docs/porting-ledger.md`, then record reviewed ranges, outcomes
+and commit mappings there. Never advance a checkpoint past unreviewed commits.
+
 ## What is in it
 
 ```text
