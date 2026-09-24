@@ -13,6 +13,14 @@ ZSH_THEME="powerlevel10k/powerlevel10k"
 plugins=(git git-lfs zsh-autosuggestions zsh-syntax-highlighting)
 source "${ZSH}/oh-my-zsh.sh"
 
+# iTerm2 sends Option-Left/Right as CSI 1;3D/C. Bind them in both common
+# editing modes so local and remote (tmux/mosh) shell prompts move by word.
+for _keymap in emacs viins; do
+  bindkey -M "${_keymap}" $'\e[1;3D' backward-word
+  bindkey -M "${_keymap}" $'\e[1;3C' forward-word
+done
+unset _keymap
+
 export POWERLEVEL9K_CONFIG_FILE="${XDG_CONFIG_HOME}/p10k.zsh"
 [[ ! -f ${POWERLEVEL9K_CONFIG_FILE} ]] || source "${POWERLEVEL9K_CONFIG_FILE}"
 

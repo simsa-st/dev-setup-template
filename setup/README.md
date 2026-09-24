@@ -54,7 +54,7 @@ Steps run in this order, each one a `step_<name>` function in `lib/`:
 |---|---|---|
 | `preflight` | both | load `config/profile.env`, check zsh/git/python3 |
 | `packages` | full | Homebrew formulae (macOS) or user-local release binaries (Linux) |
-| `shell` | full | oh-my-zsh + p10k, `~/.config` symlinks, managed `~/.zshrc` header |
+| `shell` | full | oh-my-zsh + p10k, `~/.config` symlinks, managed `~/.zshrc` header; zsh binds iTerm2 Option-Left/Right (CSI 1;3D/C) to word navigation in emacs/vi insert mode |
 | `tmux` | full | tpm + `tmux.conf` symlink |
 | `git` | both | full: render `~/.config/git/config`; layer: an `includeIf` in `~/.gitconfig` giving `${LAYER_ROOT}` this identity |
 | `tools` | full | uv, node/nvm, repo pre-commit hook |
