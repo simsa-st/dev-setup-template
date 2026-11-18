@@ -62,6 +62,7 @@ Steps run in this order, each one a `step_<name>` function in `lib/`:
 | `agents` | both | symlink agent config; render each agent's `settings.json` from its `settings.base.json`; full mode also installs the binaries |
 | `env` | both | `bashrc-layer`, the `~/.zshrc` block, `${LAYER_ROOT}/.envrc` |
 | `sessions` | full | timer that saves tmux state; on an opted-in macOS setup, a separate 15-minute activity sync |
+| `syncthing` | both | opt-in (`SYNCTHING=true`): `.stignore` for each folder in `SYNCTHING_FOLDERS`, then the one Syncthing daemon (brew + launchd agent `dev.setup.syncthing`, or the upstream apt repo + the distro's systemd user unit). Shared by every setup on the machine; pairing is by hand |
 | `clipboard` | full | lemonade server (macOS) or client + host IP (Linux) |
 | `ssh` | both | hosts from `hosts.toml`: whole config, or a `config.d` fragment. Pins `github.com` to `[defaults].identity_file` (`git_hosts` to change the list) and warns when that key is missing or not accepted by github — without the pin, `git@github.com:` remotes fail on a fresh box |
 | `finish` | both | print what to run next |
@@ -105,6 +106,12 @@ start corrupting dotfiles.
    `~/.zshrc`'s header, `~/.tmux.conf`, `~/.config/bin/*` or `~/.ssh/config`
    in layer mode makes install order matter again, and order-independence is
    the property that makes two setups on one machine survivable at all.
+
+   The one exception is the Syncthing daemon (`lib/syncthing.sh`): a user can
+   run only one, so every setup renders the same launchd agent under the same
+   label and compares normalized plists. Both installs write identical content,
+   so order still does not matter, but only while `lib/syncthing.sh` and its
+   plist template stay identical across instantiations.
 4. **Mode is declared, not detected.** Guessing from what happens to be
    installed makes a first run on a half-set-up machine take over files it
    should not — and a first run is exactly when the evidence for guessing is

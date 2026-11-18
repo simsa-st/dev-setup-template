@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Rendered to ~/Library/LaunchAgents/__LABEL__.plist by the syncthing step
+  (lib/syncthing.sh), which fills the __PLACEHOLDERS__ and normalizes the
+  result through plutil, so these comments do not reach the installed file.
+
+  The Mac's Syncthing daemon, shared by every setup on the machine: each
+  instantiation renders this same template under the same label, so whichever
+  installs last changes nothing. Keep it identical across instantiations;
+  lib/syncthing.sh says why. Linux runs the same daemon from the distro's
+  systemd user unit. It is written here rather than left to `brew services` so
+  the flags and log path are visible in the repo. Do not also run `brew
+  services start syncthing`: two supervisors would start two daemons on the
+  same config directory, and the second one fails on a port already bound.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>__LABEL__</string>
+
+  <!-- --no-browser: a daemon that opens a browser window at login is not one.
+       --no-restart: Syncthing's own supervisor would fork a replacement on
+       upgrade or a config change, which launchd neither knows about nor tracks;
+       with KeepAlive below, launchd is the single thing that restarts it.
+       --log-file: without it Syncthing logs to stdout, which launchd appends to
+       StandardOutPath and never rotates — an always-on daemon's log has to be
+       bounded by something, and Syncthing's own rotation is the something. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>__SYNCTHING_BIN__</string>
+    <string>serve</string>
+    <string>--no-browser</string>
+    <string>--no-restart</string>
+    <string>--log-file=__LOG__</string>
+    <string>--log-max-size=10485760</string>
+    <string>--log-max-old-files=3</string>
+  </array>
+
+  <!-- A sync node is only useful while it is running: bring it back if it dies,
+       and start it at login without waiting for anything else.
+
+       Do NOT restart this daemon with `syncthing cli operations restart`. With
+       --no-restart above, that makes Syncthing exit(3) and wait for the
+       supervisor — and on 2026-09-07 launchd did not respawn it for the 43
+       seconds between the exit and a manual kickstart, with keepalive present in
+       both the plist and `launchctl print`. Cause unknown; not worth taking a
+       sync daemon down again to find out. The supported way is:
+
+           launchctl kickstart -k gui/$(id -u)/__LABEL__
+
+       which is also what re-reads a changed plist. Adding a Syncthing folder to
+       an existing peer needs a reconnect before the cluster config is exchanged,
+       and this is how to get one. -->
+  <key>KeepAlive</key>
+  <true/>
+  <key>RunAtLoad</key>
+  <true/>
+
+  <!-- Discarded, deliberately. With --log-file set, Syncthing writes every line
+       to BOTH that file and stdout, so pointing these anywhere real gives a
+       second, complete, never-rotated copy of a log that already rotates — the
+       opposite of what capturing it was for. A failure early enough to miss the
+       log file shows up in `launchctl print gui/$(id -u)/<label>` as the last
+       exit status, and in the system log under launchd. -->
+  <key>StandardOutPath</key>
+  <string>/dev/null</string>
+  <key>StandardErrorPath</key>
+  <string>/dev/null</string>
+
+  <!-- Hashing and pulling must never take IO from whatever is in the foreground;
+       ProcessType is deliberately left alone, because Background gets CPU-capped
+       hard enough that a first scan would take all day. -->
+  <key>LowPriorityIO</key>
+  <true/>
+  <key>Nice</key>
+  <integer>5</integer>
+</dict>
+</plist>

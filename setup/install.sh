@@ -84,6 +84,7 @@ source "${DEV_SETUP_DIR}/lib/tools.sh"
 source "${DEV_SETUP_DIR}/lib/agents.sh"
 source "${DEV_SETUP_DIR}/lib/sessions.sh"
 source "${DEV_SETUP_DIR}/lib/clipboard.sh"
+source "${DEV_SETUP_DIR}/lib/syncthing.sh"
 
 # Everything this installer installs user-locally lands in ${XDG_CONFIG_HOME}/bin
 # (uv, node shims, delta, jq, the helper scripts) or, for anything that places
@@ -113,6 +114,7 @@ STEPS=(
   agents
   env
   sessions
+  syncthing
   clipboard
   ssh
   finish
